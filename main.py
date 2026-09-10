@@ -1382,6 +1382,29 @@ async def mini_profile_api(request):
     })
 
 
+async def mini_leaderboard_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    rows = supabase.table("users").select("id, first_name, username, chess_username, points, wins, draws, losses, games").order("points", desc=True).order("wins", desc=True).order("games", desc=True).limit(50).execute().data
+    players = []
+    for position, player in enumerate(rows, start=1):
+        players.append({
+            "position": position,
+            "id": player["id"],
+            "name": player.get("first_name") or player.get("username") or "Гравець",
+            "username": player.get("username") or "",
+            "chess_username": player.get("chess_username") or "не підключено",
+            "points": player.get("points", 0),
+            "wins": player.get("wins", 0),
+            "draws": player.get("draws", 0),
+            "losses": player.get("losses", 0),
+            "games": player.get("games", 0),
+            "is_me": player["id"] == telegram_user["id"],
+        })
+    return web.json_response({"players": players})
+
+
 async def mini_daily_bonus_api(request):
     telegram_user = get_mini_app_user(request)
     if not telegram_user:
@@ -1574,6 +1597,7 @@ async def run_web_server():
     app.router.add_get("/", mini_app_handler)
     app.router.add_get("/health", lambda request: web.json_response({"status": "ok"}))
     app.router.add_get("/api/profile", mini_profile_api)
+    app.router.add_get("/api/leaderboard", mini_leaderboard_api)
     app.router.add_post("/api/daily-bonus", mini_daily_bonus_api)
     app.router.add_post("/api/blackjack/start", mini_blackjack_start_api)
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)

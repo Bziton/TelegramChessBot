@@ -261,6 +261,30 @@
   </script>
   <script>
     (() => {
+      const leaderboardApi = async () => {
+        const response = await fetch('/api/leaderboard', { headers: { 'X-Telegram-Init-Data':window.Telegram?.WebApp?.initData || '' } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Не вдалося завантажити рейтинг');
+        return data.players || [];
+      };
+      const renderLeaderboard = (container, players, limit) => {
+        container.replaceChildren();
+        players.slice(0, limit).forEach((player) => {
+          const row = document.createElement('div');
+          row.className = `leader-row${player.is_me ? ' current-player' : ''}`;
+          const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = String(player.position).padStart(2, '0');
+          const avatar = document.createElement('span'); avatar.className = `avatar${player.position === 1 ? ' dark' : ''}`; avatar.textContent = (player.name || 'Г').charAt(0).toUpperCase();
+          const meta = document.createElement('span'); meta.className = 'leader-meta';
+          const name = document.createElement('b'); name.textContent = player.is_me ? `${player.name} (ти)` : player.name;
+          const details = document.createElement('small'); details.textContent = player.chess_username === 'не підключено' ? 'Chess.com не підключено' : `${player.wins} перемог · ${player.games} партій`;
+          meta.append(name, details);
+          const points = document.createElement('span'); points.className = 'points'; points.textContent = `${Number(player.points).toLocaleString('uk-UA')} оч.`;
+          row.append(rank, avatar, meta, points); container.appendChild(row);
+        });
+        if (!players.length) { const empty = document.createElement('p'); empty.textContent = 'Поки що немає гравців у рейтингу.'; empty.style.color = 'var(--muted)'; container.appendChild(empty); }
+      };
+      const leaderboardStyle = document.createElement('style'); leaderboardStyle.textContent = '.current-player{border:1px solid #d6a65a66;border-radius:10px;background:#d6a65a0b}'; document.head.appendChild(leaderboardStyle);
+      leaderboardApi().then((players) => document.querySelectorAll('.leaderboard').forEach((container) => renderLeaderboard(container, players, container.closest('#home') ? 3 : 50))).catch(() => {});
       const slotApi = async (path, options = {}) => {
         const response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', 'X-Telegram-Init-Data':window.Telegram?.WebApp?.initData || '', ...(options.headers || {}) } });
         const data = await response.json();
