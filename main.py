@@ -1,10 +1,14 @@
 import asyncio
+import hashlib
+import hmac
+import json
 import random
 from html import escape
 import os
 import aiohttp
 from aiohttp import web
 from datetime import datetime, timedelta
+from urllib.parse import parse_qsl
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
@@ -34,6 +38,7 @@ dp = Dispatcher()
 daily_bonus_column_available = True
 daily_bonus_claims = {}
 daily_streak_fallback = {}
+mini_blackjack_games = {}
 
 CHESS_HEADERS = {"User-Agent": "TelegramChessBot/1.0 (contact: your_email@example.com)"}
 
@@ -1460,10 +1465,110 @@ async def mini_app_handler(request):
     return web.FileResponse("web/index.html")
 
 
+def get_mini_app_user(request):
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if not init_data or not BOT_TOKEN:
+        return None
+    values = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = values.pop("hash", "")
+    if not received_hash:
+        return None
+    data_check_string = "\n".join(f"{key}={values[key]}" for key in sorted(values))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calculated_hash, received_hash):
+        return None
+    try:
+        return json.loads(values["user"])
+    except (KeyError, json.JSONDecodeError):
+        return None
+
+
+def mini_json_error(message, status=400):
+    return web.json_response({"error": message}, status=status)
+
+
+async def mini_profile_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    user_id = telegram_user["id"]
+    month = datetime.now().strftime("%Y-%m")
+    rows = supabase.table("leaderboard").select("points, casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    stats = rows[0] if rows else {"points": 0, "casino_balance": 0}
+    return web.json_response({
+        "user": telegram_user.get("first_name", "Гравець"),
+        "chess_points": stats.get("points", 0),
+        "casino_balance": stats.get("casino_balance", 0),
+    })
+
+
+async def mini_blackjack_start_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    payload = await request.json()
+    bet = int(payload.get("bet", 0))
+    if bet <= 0:
+        return mini_json_error("Invalid bet")
+    user_id = telegram_user["id"]
+    if user_id in mini_blackjack_games:
+        return mini_json_error("Game already active")
+    month = datetime.now().strftime("%Y-%m")
+    rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    if bet > balance:
+        return mini_json_error("Insufficient balance")
+    game = {"bet": bet, "player_cards": [blackjack_card(), blackjack_card()], "dealer_cards": [blackjack_card(), blackjack_card()]}
+    mini_blackjack_games[user_id] = game
+    return web.json_response({"status": "playing", "player": game["player_cards"], "dealer": ["?", game["dealer_cards"][1]], "total": blackjack_total(game["player_cards"]), "bet": bet, "balance": balance})
+
+
+async def mini_blackjack_action_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    user_id = telegram_user["id"]
+    game = mini_blackjack_games.get(user_id)
+    if not game:
+        return mini_json_error("No active game")
+    action = (await request.json()).get("action")
+    if action == "hit":
+        game["player_cards"].append(blackjack_card())
+        total = blackjack_total(game["player_cards"])
+        if total <= 21:
+            return web.json_response({"status": "playing", "player": game["player_cards"], "dealer": ["?", game["dealer_cards"][1]], "total": total, "bet": game["bet"]})
+        result, change = "Перебір", -game["bet"]
+    elif action == "stay":
+        while blackjack_total(game["dealer_cards"]) < 17:
+            game["dealer_cards"].append(blackjack_card())
+        player_total = blackjack_total(game["player_cards"])
+        dealer_total = blackjack_total(game["dealer_cards"])
+        if dealer_total > 21 or player_total > dealer_total:
+            result, change = "Перемога", game["bet"]
+        elif player_total < dealer_total:
+            result, change = "Поразка", -game["bet"]
+        else:
+            result, change = "Нічия", 0
+    else:
+        return mini_json_error("Unknown action")
+    month = datetime.now().strftime("%Y-%m")
+    rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    new_balance = balance + change
+    supabase.table("leaderboard").update({"casino_balance": new_balance}).eq("user_id", user_id).eq("month", month).execute()
+    finished = {"status": "finished", "result": result, "change": change, "player": game["player_cards"], "dealer": game["dealer_cards"], "total": blackjack_total(game["player_cards"]), "balance": new_balance}
+    mini_blackjack_games.pop(user_id, None)
+    return web.json_response(finished)
+
+
 async def run_web_server():
     app = web.Application()
     app.router.add_get("/", mini_app_handler)
     app.router.add_get("/health", lambda request: web.json_response({"status": "ok"}))
+    app.router.add_get("/api/profile", mini_profile_api)
+    app.router.add_post("/api/blackjack/start", mini_blackjack_start_api)
+    app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)

@@ -55,6 +55,15 @@
     .game.duel { background: linear-gradient(145deg, #102c2d, var(--panel)); }
     .status { display: none; margin-top: 12px; padding: 11px 13px; border-left: 3px solid var(--green); background: #10251f; color: #bcebd1; }
     .status.show { display: block; }
+    .game-panel { display: none; margin-top: 18px; padding: 18px; border: 1px solid #72591f; background: #211d13; }
+    .game-panel.show { display: block; }
+    .game-panel h2 { margin-bottom: 12px; font-size: 21px; }
+    .cards { display: flex; gap: 8px; margin: 10px 0; }
+    .card { display: grid; place-items: center; width: 44px; height: 58px; border: 1px solid #d5ae4a; background: #f8f2df; color: #16130d; font: 25px Georgia, serif; }
+    .game-actions { display: flex; gap: 8px; margin-top: 15px; }
+    .game-actions button, .bet-row button { padding: 11px 15px; background: var(--gold); color: #211b0d; font-weight: 700; }
+    .bet-row { display: flex; gap: 8px; margin-top: 12px; }
+    .bet-row input { width: 110px; padding: 10px; border: 1px solid #72591f; background: #0d1119; color: white; font: inherit; }
     .bottom { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 25px; }
     .bottom button { padding: 12px 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12px; }
     @media (max-width: 390px) { .app { padding-inline: 12px; } .hero { padding: 19px; } .hero h2 { font-size: 23px; } .balance { padding: 7px 9px; } }
@@ -82,6 +91,7 @@
       <button class="game cases" data-game="cases"><span class="icon">📦</span><b>Кейси</b><small>Відкрий свій дроп</small></button>
       <button class="game duel" data-game="duel"><span class="icon">👥</span><b>Дуель</b><small>Грай з другом</small></button>
     </section>
+    <section class="game-panel" id="game-panel"></section>
 
     <nav class="bottom">
       <button data-page="profile">👤 Профіль</button>
@@ -94,13 +104,49 @@
     tg?.ready();
     tg?.expand();
     const status = document.getElementById('status');
+    const balance = document.getElementById('balance');
+    const panel = document.getElementById('game-panel');
+    const initData = tg?.initData || '';
     const showStatus = (text) => { status.textContent = text; status.classList.add('show'); };
+    const api = async (path, options = {}) => {
+      const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': initData, ...(options.headers || {}) } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Помилка сервера');
+      return data;
+    };
+    const card = (value) => `<span class="card">${value === 11 ? 'A' : value}</span>`;
+    const drawCards = (values) => values.map(card).join('');
+    const refreshProfile = async () => {
+      try {
+        const profile = await api('/api/profile');
+        balance.textContent = `${profile.casino_balance} оч.`;
+      } catch (error) {
+        showStatus('Відкрий Mini App саме з Telegram, щоб завантажити профіль.');
+      }
+    };
+    const showBlackjack = () => {
+      panel.classList.add('show');
+      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Введи ставку і зіграй проти дилера.</p><div class="bet-row"><input id="bet" type="number" min="1" placeholder="Ставка"><button id="start">Почати</button></div>`;
+      document.getElementById('start').onclick = async () => {
+        const bet = Number(document.getElementById('bet').value);
+        try { renderBlackjack(await api('/api/blackjack/start', { method: 'POST', body: JSON.stringify({ bet }) })); } catch (error) { showStatus(`❌ ${error.message}`); }
+      };
+    };
+    const renderBlackjack = (game) => {
+      panel.classList.add('show');
+      const finished = game.status === 'finished';
+      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Дилер</p><div class="cards">${drawCards(game.dealer)}</div><p>Ти · ${game.total}</p><div class="cards">${drawCards(game.player)}</div>${finished ? `<p><b>${game.result}</b> · ${game.change > 0 ? '+' : ''}${game.change} оч.</p><p>Баланс: <b>${game.balance}</b></p><div class="game-actions"><button id="again">🔁 Ще раз</button></div>` : `<div class="game-actions"><button id="hit">➕ Hit</button><button id="stay">✋ Stay</button></div>`}`;
+      if (finished) document.getElementById('again').onclick = showBlackjack;
+      else ['hit', 'stay'].forEach((action) => { document.getElementById(action).onclick = async () => { try { renderBlackjack(await api('/api/blackjack/action', { method: 'POST', body: JSON.stringify({ action }) })); await refreshProfile(); } catch (error) { showStatus(`❌ ${error.message}`); } }; });
+    };
     document.querySelectorAll('[data-game]').forEach((button) => button.addEventListener('click', () => {
-      const labels = { blackjack: '🃏 Blackjack відкриється тут у наступному оновленні.', dice: '🎲 Кості відкриються тут у наступному оновленні.', cases: '📦 Обери кейс і крути дроп.', duel: '👥 Запрошення друзям відкриються тут.' };
+      if (button.dataset.game === 'blackjack') return showBlackjack();
+      const labels = { dice: '🎲 Кості підключимо наступними.', cases: '📦 Кейси підключимо наступними.', duel: '👥 Дуелі підключимо наступними.' };
       showStatus(labels[button.dataset.game]);
     }));
     document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => showStatus(`Розділ «${button.textContent.trim()}» готується.`)));
     document.getElementById('bonus').addEventListener('click', () => showStatus('🎁 Щоденний бонус підключимо до Supabase на наступному кроці.'));
+    refreshProfile();
   </script>
 </body>
 </html>
