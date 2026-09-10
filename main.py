@@ -645,13 +645,10 @@ async def case_battle_callback(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
     animation_steps = [
-        ("🎁 КРУТИМО", 0.16),
-        ("🎁 КРУТИМО", 0.16),
-        ("🎁 КРУТИМО", 0.18),
-        ("🎁 КРУТИМО", 0.20),
-        ("🎁 СПОВІЛЬНЮЄМО", 0.25),
-        ("🎁 СПОВІЛЬНЮЄМО", 0.32),
-        ("🎁 ОСТАННІЙ КАДР", 0.45),
+        ("🎁 КРУТИМО", 0.45),
+        ("🎁 КРУТИМО", 0.55),
+        ("🎁 СПОВІЛЬНЮЄМО", 0.70),
+        ("🎁 ОСТАННІЙ КАДР", 0.90),
     ]
     for title, pause in animation_steps:
         challenger_frame = case_roll_frame("ТВІЙ КЕЙС", "🔒")
@@ -1159,9 +1156,10 @@ async def solo_case_callback(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
     animation_steps = [
-        (0.14, "🎁 КРУТИМО"), (0.14, "🎁 КРУТИМО"),
-        (0.18, "🎁 КРУТИМО"), (0.22, "🎁 СПОВІЛЬНЮЄМО"),
-        (0.30, "🎁 СПОВІЛЬНЮЄМО"), (0.42, "🎁 ОСТАННІЙ КАДР"),
+        (0.45, "🎁 КРУТИМО"),
+        (0.55, "🎁 КРУТИМО"),
+        (0.70, "🎁 СПОВІЛЬНЮЄМО"),
+        (0.90, "🎁 ОСТАННІЙ КАДР"),
     ]
     for pause, title in animation_steps:
         await rolling_message.edit_text(
