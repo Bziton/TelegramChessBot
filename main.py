@@ -1581,33 +1581,31 @@ async def mini_wheel_play_api(request):
     if not telegram_user:
         return mini_json_error("Telegram authorization required", 401)
     try:
-        bet = int((await request.json()).get("bet", 0))
+        payload = await request.json()
+        bet = int(payload.get("bet", 0))
+        selected_multiplier = int(payload.get("multiplier", 2))
     except (TypeError, ValueError):
         return mini_json_error("Invalid bet")
     if bet <= 0:
         return mini_json_error("Invalid bet")
+    if selected_multiplier not in {2, 5, 10, 20, 50}:
+        return mini_json_error("Invalid multiplier")
     user_id = telegram_user["id"]
     rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
-    sectors = [
-        {"label": "-1x", "multiplier": 0},
-        {"label": "x2", "multiplier": 2},
-        {"label": "-1x", "multiplier": 0},
-        {"label": "x3", "multiplier": 3},
-        {"label": "-1x", "multiplier": 0},
-        {"label": "♞ x5", "multiplier": 5},
-        {"label": "-1x", "multiplier": 0},
-        {"label": "x2", "multiplier": 2},
-    ]
-    sector = random.choice(sectors)
-    payout = bet * sector["multiplier"]
+    sectors = [2, 2, 2, 5, 5, 10, 20, 50]
+    sector_index = random.randrange(len(sectors))
+    landed_multiplier = sectors[sector_index]
+    sector = {"label": f"x{landed_multiplier}", "multiplier": landed_multiplier}
+    won = landed_multiplier == selected_multiplier
+    payout = bet * landed_multiplier if won else 0
     change = payout - bet
     new_balance = balance + change
     supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
-    record_game(user_id, "wheel", bet, change, "Виграш" if payout else "Програш", {"sector": sector["label"], "payout": payout})
-    return web.json_response({"sector": sector["label"], "multiplier": sector["multiplier"], "payout": payout, "change": change, "balance": new_balance})
+    record_game(user_id, "wheel", bet, change, "Виграш" if landed_multiplier == selected_multiplier else "Програш", {"sector": sector["label"], "selected": f"x{selected_multiplier}", "payout": payout})
+    return web.json_response({"sector": sector["label"], "multiplier": landed_multiplier, "selected_multiplier": selected_multiplier, "sector_index": sector_index, "payout": payout if landed_multiplier == selected_multiplier else 0, "change": change if landed_multiplier == selected_multiplier else -bet, "balance": new_balance if landed_multiplier == selected_multiplier else balance - bet})
 
 
 async def mini_lot_open_api(request):
