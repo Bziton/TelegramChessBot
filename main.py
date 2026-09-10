@@ -1510,10 +1510,10 @@ async def mini_slots_play_api(request):
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
-    symbols = ["🍒", "🍋", "🍉", "🍇", "⭐"]
+    symbols = ["🍒", "🍋", "🍊", "🍑", "🍉", "🍇", "🔔", "7️⃣", "♞", "♛", "♔"]
     reels = [random.choice(symbols) for _ in range(3)]
     if reels[0] == reels[1] == reels[2]:
-        multiplier = 8 if reels[0] == "⭐" else 5
+        multiplier = {"7️⃣": 25, "♔": 20, "♛": 15, "♞": 12}.get(reels[0], 8)
     elif len(set(reels)) == 2:
         multiplier = 2
     else:

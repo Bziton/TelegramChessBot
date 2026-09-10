@@ -259,5 +259,36 @@
       document.addEventListener('click', (event) => { const button = event.target.closest('[data-lot]'); if (button) openLot(button.dataset.lot); });
     })();
   </script>
+  <script>
+    (() => {
+      const slotApi = async (path, options = {}) => {
+        const response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', 'X-Telegram-Init-Data':window.Telegram?.WebApp?.initData || '', ...(options.headers || {}) } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Помилка сервера');
+        return data;
+      };
+      const symbols = ['🍒','🍋','🍊','🍑','🍉','🍇','🔔','7️⃣','♞','♛','♔'];
+      const slotStyle = document.createElement('style');
+      slotStyle.textContent = `
+        .slot-stage{padding:16px 12px 20px;border:1px solid #806038;border-radius:22px;background:linear-gradient(145deg,#161b20,#090d12);box-shadow:inset 0 1px #fff2,0 20px 50px #0009}
+        .slot-kicker{display:flex;justify-content:space-between;color:var(--gold-light);font-size:11px;text-transform:uppercase;letter-spacing:1.2px}.slot-machine{margin:16px 0;padding:12px;border:2px solid #b9823c;border-radius:18px;background:linear-gradient(100deg,#242b31,#0d1217,#242b31);box-shadow:0 0 25px #d6a65a33,inset 0 0 20px #000}
+        .slot-window{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:8px;border:1px solid #f6d28a88;border-radius:12px;background:#05080b;box-shadow:inset 0 0 18px #000}.slot-reel{display:grid;place-items:center;height:86px;overflow:hidden;border:1px solid #ffffff25;border-radius:8px;background:linear-gradient(90deg,#d7dce0,#fff,#9da5ac);color:#161a1c;font-size:42px;box-shadow:inset 0 5px 9px #fff8,inset 0 -8px 10px #4b535866}.slot-reel.spin{filter:blur(3px);animation:reel-shake .12s linear infinite}.slot-line{height:2px;margin:-45px 8px 43px;background:var(--gold);box-shadow:0 0 14px var(--gold);opacity:.85}.slot-spin{width:100%;margin-top:2px;padding:14px;border:1px solid #ffe2a0;border-radius:12px;color:#211708;background:linear-gradient(135deg,#ffe19a,#b8782d);font-size:16px;font-weight:800;box-shadow:0 0 25px #d6a65a66}.slot-spin:disabled{opacity:.5;cursor:wait}.slot-bets{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.slot-bet{padding:10px 4px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08}.slot-bet.active{border-color:var(--gold);color:var(--gold-light);background:#d6a65a22}.slot-message{text-align:center;min-height:24px;margin-top:10px;color:var(--muted)}.slot-message.win{color:var(--gold-light);font-weight:700;text-shadow:0 0 16px var(--gold)}.slot-message.jackpot{font-size:19px;animation:jackpot-pop .7s ease both}.slot-rain{position:fixed;z-index:30;pointer-events:none;top:-30px;color:var(--gold-light);font-size:22px;animation:coin-rain 2.3s linear forwards}@keyframes reel-shake{from{transform:translateY(-5px)}to{transform:translateY(5px)}}@keyframes jackpot-pop{0%{opacity:0;transform:scale(.5)}70%{transform:scale(1.18)}100%{opacity:1;transform:scale(1)}}@keyframes coin-rain{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
+      `;
+      document.head.appendChild(slotStyle);
+      const machine = `<section class="slot-stage"><div class="slot-kicker"><span>♞ Шахові слоти</span><span id="slot-balance-label">Очки</span></div><div class="slot-machine"><div class="slot-window" id="slot-window">${symbols.slice(0,3).map(symbol => `<div class="slot-reel">${symbol}</div>`).join('')}</div><div class="slot-line"></div><button class="slot-spin" id="slot-spin">КРУТИТИ</button><div class="slot-bets"><button class="slot-bet active" data-slot-bet="25">25</button><button class="slot-bet" data-slot-bet="80">80</button><button class="slot-bet" data-slot-bet="180">180</button></div><div class="slot-message" id="slot-message">Обери ставку та крути барабани</div></div><p style="color:var(--muted);font-size:11px;text-align:center">🍒 🍋 🍊 🍑 🍉 🍇 🔔 7️⃣ ♞ ♛ ♔</p></section>`;
+      document.querySelector('.games').innerHTML = `<section class="lots-hero"><div class="label" style="color:var(--green)">Преміальний зал</div><h1>Фруктові лоти</h1><p>Класичні барабани, шахові символи та призи в очках.</p></section>${machine}`;
+      document.querySelector('.game-list').innerHTML = machine;
+      let bet = 25;
+      const rain = (jackpot) => { const icons = jackpot ? ['♔','♛','♞','7️⃣','✦'] : ['✦','♟','♞']; for (let index = 0; index < 18; index += 1) { const item = document.createElement('span'); item.className = 'slot-rain'; item.textContent = icons[index % icons.length]; item.style.left = `${Math.random() * 100}%`; item.style.animationDelay = `${Math.random() * .6}s`; document.body.appendChild(item); setTimeout(() => item.remove(), 3000); } };
+      const setupMachine = (root) => {
+        if (root.dataset.ready) return;
+        root.dataset.ready = 'true';
+        const reels = root.querySelectorAll('.slot-reel'); const message = root.querySelector('.slot-message'); const spin = root.querySelector('.slot-spin');
+        root.querySelectorAll('[data-slot-bet]').forEach(button => button.addEventListener('click', () => { bet = Number(button.dataset.slotBet); root.querySelectorAll('[data-slot-bet]').forEach(item => item.classList.toggle('active', item === button)); }));
+        spin.addEventListener('click', async () => { spin.disabled = true; message.className = 'slot-message'; message.textContent = 'Барабани обертаються...'; reels.forEach(reel => reel.classList.add('spin')); try { const result = await slotApi('/api/slots/play', { method:'POST', body:JSON.stringify({ bet }) }); await new Promise(resolve => setTimeout(resolve, 850)); reels.forEach((reel, index) => { reel.classList.remove('spin'); reel.textContent = result.reels[index]; }); setBalance(result.balance); if (result.multiplier) { const jackpot = result.multiplier >= 20; message.className = `slot-message win${jackpot ? ' jackpot' : ''}`; message.textContent = jackpot ? `JACKPOT! +${result.payout.toLocaleString('uk-UA')} оч.` : `ВИГРАШ x${result.multiplier} · +${result.payout.toLocaleString('uk-UA')} оч.`; rain(jackpot); } else { message.textContent = `Без виграшу · -${bet} оч.`; } } catch (error) { message.textContent = error.message; } finally { spin.disabled = false; } });
+      };
+      document.querySelectorAll('.slot-stage').forEach(setupMachine);
+    })();
+  </script>
 </body>
 </html>
