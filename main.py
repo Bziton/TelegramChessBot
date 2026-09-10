@@ -1495,6 +1495,42 @@ async def mini_dice_play_api(request):
     return web.json_response({"player": player, "dealer": dealer, "player_total": player_total, "dealer_total": dealer_total, "result": result, "change": change, "balance": new_balance})
 
 
+async def mini_slots_play_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    try:
+        bet = int((await request.json()).get("bet", 0))
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid bet")
+    if bet <= 0:
+        return mini_json_error("Invalid bet")
+    user_id = telegram_user["id"]
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    if bet > balance:
+        return mini_json_error("Insufficient balance")
+    symbols = ["🍒", "🍋", "🍉", "🍇", "⭐"]
+    reels = [random.choice(symbols) for _ in range(3)]
+    if reels[0] == reels[1] == reels[2]:
+        multiplier = 8 if reels[0] == "⭐" else 5
+    elif len(set(reels)) == 2:
+        multiplier = 2
+    else:
+        multiplier = 0
+    payout = bet * multiplier
+    change = payout - bet
+    new_balance = balance + change
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    return web.json_response({
+        "reels": reels,
+        "multiplier": multiplier,
+        "payout": payout,
+        "change": change,
+        "balance": new_balance,
+    })
+
+
 async def run_web_server():
     app = web.Application()
     app.router.add_get("/", mini_app_handler)
@@ -1504,6 +1540,7 @@ async def run_web_server():
     app.router.add_post("/api/blackjack/start", mini_blackjack_start_api)
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)
     app.router.add_post("/api/dice/play", mini_dice_play_api)
+    app.router.add_post("/api/slots/play", mini_slots_play_api)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)

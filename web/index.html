@@ -118,6 +118,46 @@
       };
       syncProfile();
       const formatCards = (cards) => cards.map((value) => `<span style="display:inline-grid;place-items:center;width:43px;height:58px;margin:4px;border:1px solid #b9823c;border-radius:7px;background:#f5eee1;color:#151914;font:24px Georgia">${value === 11 ? 'Т' : value}</span>`).join('');
+      let slotMode = false;
+      const slotCard = '<button class="game blackjack" data-game="slots"><span class="game-icon">🍒</span><b>Фруктові слоти</b><small>Збери однакові фрукти</small></button>';
+      const slotWide = '<button class="game-wide" data-game="slots"><span class="game-icon">🍒</span><div><h3>Фруктові слоти</h3><small>Три однакові символи дають великий виграш</small></div><span class="arrow">›</span></button>';
+      document.querySelector('.games').innerHTML = slotCard;
+      document.querySelector('.game-list').innerHTML = slotWide;
+      const openSlots = () => {
+        slotMode = true;
+        document.querySelectorAll('.screen').forEach((screen) => screen.classList.toggle('active', screen.id === 'betting'));
+        document.querySelectorAll('.nav-btn').forEach((button) => button.classList.toggle('active', button.dataset.page === 'games'));
+        document.getElementById('bet-title').textContent = 'Фруктові слоти';
+        window.scrollTo({ top:0, behavior:'smooth' });
+      };
+      document.querySelectorAll('[data-game="slots"]').forEach((button) => button.addEventListener('click', openSlots));
+      const spinSlots = async () => {
+        const bet = Number(document.querySelector('.stake.selected')?.dataset.stake || 80);
+        const panel = document.getElementById('game-panel');
+        const symbols = ['🍒', '🍋', '🍉', '🍇', '⭐'];
+        panel.innerHTML = '<div class="label">Обертання</div><div id="slot-reels" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0"></div><p style="text-align:center;color:var(--muted)">Удачі!</p>';
+        const reels = document.getElementById('slot-reels');
+        reels.innerHTML = symbols.slice(0, 3).map((symbol) => `<div style="display:grid;place-items:center;min-height:82px;border:1px solid #806038;border-radius:12px;background:#f5eee1;color:#151914;font-size:42px">${symbol}</div>`).join('');
+        try {
+          const result = await miniApi('/api/slots/play', { method:'POST', body:JSON.stringify({ bet }) });
+          reels.innerHTML = result.reels.map((symbol) => `<div style="display:grid;place-items:center;min-height:82px;border:1px solid #d6a65a;border-radius:12px;background:#f5eee1;color:#151914;font-size:42px">${symbol}</div>`).join('');
+          const message = result.multiplier ? `Виграш x${result.multiplier}: +${result.payout} оч.` : `Цього разу без виграшу: -${bet} оч.`;
+          panel.insertAdjacentHTML('beforeend', `<div class="promo" style="margin-top:16px"><div><h3>${message}</h3><p>Баланс: ${Number(result.balance).toLocaleString('uk-UA')} оч.</p></div><button class="btn-primary" id="slot-again">Крутити ще</button></div>`);
+          setBalance(result.balance);
+          document.getElementById('slot-again').onclick = spinSlots;
+        } catch (error) {
+          panel.innerHTML = `<p style="text-align:center;color:var(--red)">${error.message}</p><button class="btn-primary start" id="slot-retry">Спробувати ще</button>`;
+          document.getElementById('slot-retry').onclick = spinSlots;
+        }
+      };
+      document.getElementById('start-game').addEventListener('click', (event) => {
+        if (!slotMode) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.querySelectorAll('.screen').forEach((screen) => screen.classList.toggle('active', screen.id === 'active-game'));
+        document.getElementById('active-title').textContent = 'Фруктові слоти';
+        spinSlots();
+      }, true);
       const observer = new MutationObserver(() => {
         const oldButton = document.getElementById('game-action');
         if (!oldButton || oldButton.textContent.includes('Зіграти') || oldButton.dataset.replaced === 'true') return;
