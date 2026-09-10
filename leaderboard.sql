@@ -70,3 +70,17 @@ create table if not exists public.duels (
 
 alter table public.duels
     add column if not exists opponent_side text;
+
+create table if not exists public.game_history (
+    id bigint generated always as identity primary key,
+    user_id bigint not null references public.users (id) on delete cascade,
+    game_type text not null,
+    bet integer not null default 0 check (bet >= 0),
+    change integer not null default 0,
+    result text not null,
+    details jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists game_history_user_created_idx
+on public.game_history (user_id, created_at desc);

@@ -1366,6 +1366,17 @@ def mini_json_error(message, status=400):
     return web.json_response({"error": message}, status=status)
 
 
+def record_game(user_id, game_type, bet, change, result, details=None):
+    supabase.table("game_history").insert({
+        "user_id": user_id,
+        "game_type": game_type,
+        "bet": bet,
+        "change": change,
+        "result": result,
+        "details": details or {},
+    }).execute()
+
+
 async def mini_profile_api(request):
     telegram_user = get_mini_app_user(request)
     if not telegram_user:
@@ -1403,6 +1414,14 @@ async def mini_leaderboard_api(request):
             "is_me": player["id"] == telegram_user["id"],
         })
     return web.json_response({"players": players})
+
+
+async def mini_history_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    rows = supabase.table("game_history").select("game_type, bet, change, result, details, created_at").eq("user_id", telegram_user["id"]).order("created_at", desc=True).limit(20).execute().data
+    return web.json_response({"games": rows})
 
 
 async def mini_daily_bonus_api(request):
@@ -1484,6 +1503,7 @@ async def mini_blackjack_action_api(request):
     new_balance = balance + change
     supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     finished = {"status": "finished", "result": result, "change": change, "player": game["player_cards"], "dealer": game["dealer_cards"], "total": blackjack_total(game["player_cards"]), "balance": new_balance}
+    record_game(user_id, "blackjack", game["bet"], change, result, {"player": game["player_cards"], "dealer": game["dealer_cards"]})
     mini_blackjack_games.pop(user_id, None)
     return web.json_response(finished)
 
@@ -1515,6 +1535,7 @@ async def mini_dice_play_api(request):
         result, change = "Нічия", 0
     new_balance = balance + change
     supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    record_game(user_id, "dice", bet, change, result, {"player": player, "dealer": dealer})
     return web.json_response({"player": player, "dealer": dealer, "player_total": player_total, "dealer_total": dealer_total, "result": result, "change": change, "balance": new_balance})
 
 
@@ -1545,6 +1566,7 @@ async def mini_slots_play_api(request):
     change = payout - bet
     new_balance = balance + change
     supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    record_game(user_id, "slots", bet, change, "Виграш" if multiplier else "Програш", {"reels": reels, "multiplier": multiplier, "payout": payout})
     return web.json_response({
         "reels": reels,
         "multiplier": multiplier,
@@ -1582,6 +1604,7 @@ async def mini_lot_open_api(request):
     prize = lot["prize"] if won else 0
     new_balance = balance - lot["price"] + prize
     supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    record_game(user_id, "lot", lot["price"], prize - lot["price"], "Виграш" if won else "Без призу", {"rarity": lot["rarity"], "prize": prize})
     return web.json_response({
         "lot": lot_type,
         "rarity": lot["rarity"],
@@ -1598,6 +1621,7 @@ async def run_web_server():
     app.router.add_get("/health", lambda request: web.json_response({"status": "ok"}))
     app.router.add_get("/api/profile", mini_profile_api)
     app.router.add_get("/api/leaderboard", mini_leaderboard_api)
+    app.router.add_get("/api/history", mini_history_api)
     app.router.add_post("/api/daily-bonus", mini_daily_bonus_api)
     app.router.add_post("/api/blackjack/start", mini_blackjack_start_api)
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)

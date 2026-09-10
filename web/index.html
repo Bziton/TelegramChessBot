@@ -314,5 +314,27 @@
       document.querySelectorAll('.slot-stage').forEach(setupMachine);
     })();
   </script>
+  <script>
+    (() => {
+      const loadHistory = async () => {
+        try {
+          const response = await fetch('/api/history', { headers: { 'X-Telegram-Init-Data':window.Telegram?.WebApp?.initData || '' } });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Не вдалося завантажити історію');
+          const history = document.querySelector('#profile .history-row')?.parentElement;
+          if (!history) return;
+          history.replaceChildren();
+          const names = { slots:'Фруктові слоти', blackjack:'Рояль 21', dice:'Кості', lot:'Лот' };
+          data.games.forEach((game) => {
+            const row = document.createElement('div'); row.className = 'history-row';
+            const info = document.createElement('span'); const title = document.createElement('b'); title.textContent = names[game.game_type] || game.game_type; const date = document.createElement('small'); date.textContent = new Date(game.created_at).toLocaleString('uk-UA', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); info.append(title, date);
+            const change = document.createElement('strong'); change.className = game.change >= 0 ? 'win' : 'loss'; change.textContent = `${game.change >= 0 ? '+' : ''}${Number(game.change).toLocaleString('uk-UA')} оч.`; row.append(info, change); history.appendChild(row);
+          });
+          if (!data.games.length) { const empty = document.createElement('p'); empty.textContent = 'Ти ще не грав. Результати з’являться після першої гри.'; empty.style.color = 'var(--muted)'; history.appendChild(empty); }
+        } catch (error) { console.error(error); }
+      };
+      loadHistory();
+    })();
+  </script>
 </body>
 </html>
