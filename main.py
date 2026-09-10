@@ -1597,7 +1597,7 @@ async def mini_wheel_play_api(request):
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
-    sectors = [2, 2, 0, 5, 0, 10, 0, 20]
+    sectors = [2, 2, 2, 5, 5, 10, 20, 0]
     sector_index = random.randrange(len(sectors))
     landed_multiplier = sectors[sector_index]
     sector = {"label": f"x{landed_multiplier}" if landed_multiplier else "Пусто", "multiplier": landed_multiplier}
