@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Telegram Chess Casino</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #080b12;
+      --panel: #111827;
+      --panel-2: #172235;
+      --line: #26344a;
+      --text: #f4f7fb;
+      --muted: #91a0b5;
+      --gold: #f5c451;
+      --green: #63d69a;
+      --cyan: #70d5e8;
+      --danger: #f17b87;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: radial-gradient(circle at 90% 0%, #203650 0, transparent 38%), var(--bg);
+      font: 15px/1.45 Georgia, "Times New Roman", serif;
+    }
+    button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+    .app { max-width: 620px; margin: 0 auto; padding: 22px 16px 34px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .brand { display: flex; gap: 11px; align-items: center; }
+    .brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #72591f; background: #211d13; color: var(--gold); font-size: 23px; }
+    .eyebrow { margin: 0; color: var(--gold); font: 11px/1.2 Arial, sans-serif; letter-spacing: 1.7px; text-transform: uppercase; }
+    h1, h2, p { margin: 0; }
+    h1 { margin-top: 3px; font-size: 25px; font-weight: 700; }
+    .balance { padding: 9px 12px; border: 1px solid var(--line); background: rgba(17,24,39,.84); text-align: right; }
+    .balance small { display: block; color: var(--muted); font: 10px Arial, sans-serif; text-transform: uppercase; }
+    .balance strong { color: var(--gold); font-size: 19px; }
+    .hero { padding: 24px; border: 1px solid #31435e; background: linear-gradient(135deg, rgba(24,39,60,.96), rgba(14,20,32,.96)); }
+    .hero h2 { max-width: 350px; font-size: 27px; line-height: 1.1; }
+    .hero p { max-width: 440px; margin-top: 10px; color: var(--muted); }
+    .hero button { margin-top: 20px; padding: 12px 17px; background: var(--gold); color: #211b0d; font-weight: 700; }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 0 12px; }
+    .section-head h2 { font-size: 20px; }
+    .section-head span { color: var(--muted); font: 11px Arial, sans-serif; text-transform: uppercase; }
+    .games { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .game { min-height: 126px; padding: 17px; border: 1px solid var(--line); background: var(--panel); text-align: left; transition: transform .15s ease, border-color .15s ease; }
+    .game:active { transform: translateY(2px); }
+    .game:hover { border-color: var(--gold); }
+    .game .icon { display: block; margin-bottom: 16px; font-size: 27px; }
+    .game b { display: block; font-size: 17px; }
+    .game small { display: block; margin-top: 3px; color: var(--muted); }
+    .game.cases { background: linear-gradient(145deg, #2b2111, var(--panel)); }
+    .game.duel { background: linear-gradient(145deg, #102c2d, var(--panel)); }
+    .status { display: none; margin-top: 12px; padding: 11px 13px; border-left: 3px solid var(--green); background: #10251f; color: #bcebd1; }
+    .status.show { display: block; }
+    .bottom { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 25px; }
+    .bottom button { padding: 12px 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12px; }
+    @media (max-width: 390px) { .app { padding-inline: 12px; } .hero { padding: 19px; } .hero h2 { font-size: 23px; } .balance { padding: 7px 9px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">♞</div><div><p class="eyebrow">Telegram Chess</p><h1>Casino room</h1></div></div>
+      <div class="balance"><small>Баланс</small><strong id="balance">0 оч.</strong></div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">Грай розумно</p>
+      <h2>Твій стіл уже відкритий.</h2>
+      <p>Blackjack, кейси й дуелі зібрані в одному швидкому просторі.</p>
+      <button id="bonus">🎁 Забрати щоденний бонус</button>
+      <div class="status" id="status"></div>
+    </section>
+
+    <div class="section-head"><h2>Ігри</h2><span>проти бота</span></div>
+    <section class="games">
+      <button class="game" data-game="blackjack"><span class="icon">🃏</span><b>Blackjack</b><small>Hit, Stay, 21</small></button>
+      <button class="game" data-game="dice"><span class="icon">🎲</span><b>Кості</b><small>Вища сума забирає банк</small></button>
+      <button class="game cases" data-game="cases"><span class="icon">📦</span><b>Кейси</b><small>Відкрий свій дроп</small></button>
+      <button class="game duel" data-game="duel"><span class="icon">👥</span><b>Дуель</b><small>Грай з другом</small></button>
+    </section>
+
+    <nav class="bottom">
+      <button data-page="profile">👤 Профіль</button>
+      <button data-page="leaderboard">🏆 Лідерборд</button>
+      <button data-page="history">📜 Історія</button>
+    </nav>
+  </main>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    tg?.ready();
+    tg?.expand();
+    const status = document.getElementById('status');
+    const showStatus = (text) => { status.textContent = text; status.classList.add('show'); };
+    document.querySelectorAll('[data-game]').forEach((button) => button.addEventListener('click', () => {
+      const labels = { blackjack: '🃏 Blackjack відкриється тут у наступному оновленні.', dice: '🎲 Кості відкриються тут у наступному оновленні.', cases: '📦 Обери кейс і крути дроп.', duel: '👥 Запрошення друзям відкриються тут.' };
+      showStatus(labels[button.dataset.game]);
+    }));
+    document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => showStatus(`Розділ «${button.textContent.trim()}» готується.`)));
+    document.getElementById('bonus').addEventListener('click', () => showStatus('🎁 Щоденний бонус підключимо до Supabase на наступному кроці.'));
+  </script>
+</body>
+</html>

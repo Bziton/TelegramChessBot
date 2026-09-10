@@ -1,4 +1,4 @@
 aiogram
 aiohttp
- python-dotenv
- supabase
+python-dotenv
+supabase

@@ -3,6 +3,7 @@ import random
 from html import escape
 import os
 import aiohttp
+from aiohttp import web
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
@@ -19,6 +20,8 @@ SUPABASE_URL = raw_url.split("/rest/v1")[0].rstrip("/")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+MINI_APP_URL = os.getenv("MINI_APP_URL", "").strip()
+WEB_PORT = int(os.getenv("PORT", "8080"))
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env")
@@ -34,12 +37,14 @@ CHESS_HEADERS = {"User-Agent": "TelegramChessBot/1.0 (contact: your_email@exampl
 
 def get_main_keyboard():
     builder = ReplyKeyboardBuilder()
+    if MINI_APP_URL:
+        builder.button(text="🚀 Відкрити Mini App", web_app=types.WebAppInfo(url=MINI_APP_URL))
     builder.button(text="👤 Профіль")
     builder.button(text="⚔️ Мої бої")
     builder.button(text="🏆 Лідерборд")
     builder.button(text="🎰 Казино")
     builder.button(text="🎁 Забрати +10")
-    builder.adjust(2)
+    builder.adjust(1 if MINI_APP_URL else 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
 # Динамічне отримання ігор за ПОТОЧНИЙ місяць
@@ -1448,9 +1453,32 @@ async def cmd_leaderboard(message: types.Message):
     report = f"Невідома команда: {message.text}"
     await message.answer(report)
 
+
+async def mini_app_handler(request):
+    return web.FileResponse("web/index.html")
+
+
+async def run_web_server():
+    app = web.Application()
+    app.router.add_get("/", mini_app_handler)
+    app.router.add_get("/health", lambda request: web.json_response({"status": "ok"}))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
+    await site.start()
+    print(f"Mini App server запущено на порту {WEB_PORT}")
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await runner.cleanup()
+
+
 async def main():
     print("Бот запущено!")
-    await dp.start_polling(bot)
+    await asyncio.gather(
+        dp.start_polling(bot),
+        run_web_server(),
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
