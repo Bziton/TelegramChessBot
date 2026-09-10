@@ -34,23 +34,29 @@ alter table public.users
 alter table public.users
     add column if not exists updated_at timestamptz not null default now();
 
-update public.users as u
-set
-    chess_username = coalesce(u.chess_username, l.chess_username),
-    points = l.points,
-    wins = l.wins,
-    draws = l.draws,
-    losses = l.losses,
-    games = l.games,
-    chess_points = l.chess_points,
-    casino_balance = l.casino_balance,
-    exchanged_chess_points = l.exchanged_chess_points,
-    daily_bonus_date = l.daily_bonus_date,
-    daily_streak = l.daily_streak,
-    updated_at = now()
-from public.leaderboard as l
-where l.user_id = u.id
-  and l.month = to_char(current_date, 'YYYY-MM');
+do $$
+begin
+    if to_regclass('public.leaderboard') is not null then
+        update public.users as u
+        set
+            chess_username = coalesce(u.chess_username, l.chess_username),
+            points = l.points,
+            wins = l.wins,
+            draws = l.draws,
+            losses = l.losses,
+            games = l.games,
+            chess_points = l.chess_points,
+            casino_balance = l.casino_balance,
+            exchanged_chess_points = l.exchanged_chess_points,
+            daily_bonus_date = l.daily_bonus_date,
+            daily_streak = l.daily_streak,
+            updated_at = now()
+        from public.leaderboard as l
+        where l.user_id = u.id
+          and l.month = to_char(current_date, 'YYYY-MM');
+    end if;
+end
+$$;
 
 create index if not exists users_points_idx
 on public.users (points desc, wins desc, games desc);
