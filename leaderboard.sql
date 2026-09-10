@@ -1,40 +1,61 @@
-create table if not exists public.leaderboard (
-    user_id bigint not null references public.users (id) on delete cascade,
-    month text not null,
-    first_name text,
-    username text,
-    chess_username text not null,
-    points integer not null default 0,
-    wins integer not null default 0,
-    draws integer not null default 0,
-    losses integer not null default 0,
-    games integer not null default 0,
-    chess_points integer not null default 0,
-    casino_balance integer not null default 0,
-    exchanged_chess_points integer not null default 0,
-    daily_bonus_date date,
-    daily_streak integer not null default 0,
-    updated_at timestamptz not null default now(),
-    primary key (user_id, month)
-);
+alter table public.users
+    add column if not exists chess_username text;
 
-create index if not exists leaderboard_month_score_idx
-on public.leaderboard (month, points desc, wins desc, games desc);
+alter table public.users
+    add column if not exists points integer not null default 0;
 
-alter table public.leaderboard
+alter table public.users
+    add column if not exists wins integer not null default 0;
+
+alter table public.users
+    add column if not exists draws integer not null default 0;
+
+alter table public.users
+    add column if not exists losses integer not null default 0;
+
+alter table public.users
+    add column if not exists games integer not null default 0;
+
+alter table public.users
     add column if not exists chess_points integer not null default 0;
 
-alter table public.leaderboard
+alter table public.users
     add column if not exists casino_balance integer not null default 0;
 
-alter table public.leaderboard
-    add column if not exists daily_bonus_date date;
-
-alter table public.leaderboard
+alter table public.users
     add column if not exists exchanged_chess_points integer not null default 0;
 
-alter table public.leaderboard
+alter table public.users
+    add column if not exists daily_bonus_date date;
+
+alter table public.users
     add column if not exists daily_streak integer not null default 0;
+
+alter table public.users
+    add column if not exists updated_at timestamptz not null default now();
+
+update public.users as u
+set
+    chess_username = coalesce(u.chess_username, l.chess_username),
+    points = l.points,
+    wins = l.wins,
+    draws = l.draws,
+    losses = l.losses,
+    games = l.games,
+    chess_points = l.chess_points,
+    casino_balance = l.casino_balance,
+    exchanged_chess_points = l.exchanged_chess_points,
+    daily_bonus_date = l.daily_bonus_date,
+    daily_streak = l.daily_streak,
+    updated_at = now()
+from public.leaderboard as l
+where l.user_id = u.id
+  and l.month = to_char(current_date, 'YYYY-MM');
+
+create index if not exists users_points_idx
+on public.users (points desc, wins desc, games desc);
+
+drop table if exists public.leaderboard;
 
 create table if not exists public.duels (
     id bigint generated always as identity primary key,

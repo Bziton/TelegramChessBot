@@ -81,11 +81,11 @@ def get_game_result(result: str):
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    if message.from_user.username:
-        supabase.table("users").update({
-            "first_name": message.from_user.first_name,
-            "username": message.from_user.username.lower(),
-        }).eq("id", message.from_user.id).execute()
+    supabase.table("users").upsert({
+        "id": message.from_user.id,
+        "first_name": message.from_user.first_name,
+        "username": (message.from_user.username or "").lower() or None,
+    }).execute()
 
     saved_user = supabase.table("users") \
         .select("chess_username") \
@@ -102,8 +102,8 @@ async def cmd_start(message: types.Message):
         )
     else:
         greeting = (
-            "Привіт! Я бот для відстеження шахових дуелей.\n\n"
-            "Вкажи свій нікнейм на Chess.com за допомогою команди:\n"
+            "Привіт! Я бот для шахів та ігор.\n\n"
+            "Chess.com нік можна додати пізніше командою:\n"
             "<code>/set_chess ваш_нікнейм</code>"
         )
 
@@ -145,13 +145,7 @@ async def set_chess_username(message: types.Message):
                 await message.answer("❌ Такого користувача не знайдено на Chess.com!")
                 return
 
-    user_data = {
-        "id": user_id,
-        "first_name": message.from_user.first_name,
-        "username": message.from_user.username or "відсутній",
-        "chess_username": chess_nick.lower()
-    }
-    supabase.table("users").upsert(user_data).execute()
+    supabase.table("users").update({"chess_username": chess_nick.lower()}).eq("id", user_id).execute()
 
     await message.answer(f"✅ Твій Chess.com нікнейм збережено: <b>{chess_nick}</b>", parse_mode="HTML")
 
@@ -165,34 +159,7 @@ async def profile_handler(message: types.Message):
     else:
         chess_nick = "не вказано (напиши /set_chess)"
 
-    current_month = datetime.now().strftime("%Y-%m")
-    try:
-        leaderboard_res = supabase.table("leaderboard") \
-                .select("points, casino_balance, daily_bonus_date, daily_streak") \
-            .eq("user_id", user_id) \
-            .eq("month", current_month) \
-            .limit(1) \
-            .execute().data
-    except APIError as error:
-        if error.args and error.args[0].get("code") != "42703":
-            raise
-        try:
-            leaderboard_res = supabase.table("leaderboard") \
-                .select("points, casino_balance, daily_bonus_date") \
-                .eq("user_id", user_id) \
-                .eq("month", current_month) \
-                .limit(1) \
-                .execute().data
-        except APIError as error:
-            if error.args and error.args[0].get("code") != "42703":
-                raise
-            leaderboard_res = supabase.table("leaderboard") \
-                .select("points, casino_balance") \
-                .eq("user_id", user_id) \
-                .eq("month", current_month) \
-                .limit(1) \
-                .execute().data
-    stats = leaderboard_res[0] if leaderboard_res else {}
+    stats = res.data[0] if res.data else {}
     chess_points = stats.get("points", 0)
     casino_balance = stats.get("casino_balance", 0)
     today = datetime.now().date().isoformat()
@@ -216,37 +183,8 @@ async def profile_handler(message: types.Message):
 @dp.message(F.text == "🎁 Забрати +10")
 async def daily_bonus_handler(message: types.Message):
     user_id = message.from_user.id
-    current_month = datetime.now().strftime("%Y-%m")
     today = datetime.now().date().isoformat()
-    try:
-        rows = supabase.table("leaderboard") \
-            .select("casino_balance, daily_bonus_date, daily_streak") \
-            .eq("user_id", user_id) \
-            .eq("month", current_month) \
-            .limit(1) \
-            .execute().data
-        has_daily_bonus_column = True
-    except APIError as error:
-        if error.args and error.args[0].get("code") != "42703":
-            raise
-        try:
-            rows = supabase.table("leaderboard") \
-                .select("casino_balance, daily_bonus_date") \
-                .eq("user_id", user_id) \
-                .eq("month", current_month) \
-                .limit(1) \
-                .execute().data
-            has_daily_bonus_column = True
-        except APIError as error:
-            if error.args and error.args[0].get("code") != "42703":
-                raise
-            rows = supabase.table("leaderboard") \
-                .select("casino_balance") \
-                .eq("user_id", user_id) \
-                .eq("month", current_month) \
-                .limit(1) \
-                .execute().data
-            has_daily_bonus_column = False
+    rows = supabase.table("users").select("casino_balance, daily_bonus_date, daily_streak").eq("id", user_id).limit(1).execute().data
 
     if not rows:
         await message.answer("❌ Спочатку відкрий «🏆 Лідерборд», щоб створити баланс казино.")
@@ -263,17 +201,8 @@ async def daily_bonus_handler(message: types.Message):
     streak = previous_streak + 1 if previous_date == yesterday else 1
     bonus = 100 if streak % 7 == 0 else 10
     new_balance = player.get("casino_balance", 0) + bonus
-    update_data = {"casino_balance": new_balance}
-    if has_daily_bonus_column:
-        update_data["daily_bonus_date"] = today
-        if "daily_streak" in player:
-            update_data["daily_streak"] = streak
-        else:
-            daily_streak_fallback[user_id] = streak
-    else:
-        daily_bonus_claims[user_id] = today
-        daily_streak_fallback[user_id] = streak
-    supabase.table("leaderboard").update(update_data).eq("user_id", user_id).eq("month", current_month).execute()
+    update_data = {"casino_balance": new_balance, "daily_bonus_date": today, "daily_streak": streak}
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
 
     await message.answer(
         f"🎁 Бонус отримано: <b>+{bonus} очок</b>\n"
@@ -348,12 +277,7 @@ async def duel_handler(message: types.Message):
         return
 
     current_month = datetime.now().strftime("%Y-%m")
-    balance_rows = supabase.table("leaderboard") \
-        .select("casino_balance") \
-        .eq("user_id", message.from_user.id) \
-        .eq("month", current_month) \
-        .limit(1) \
-        .execute().data
+    balance_rows = supabase.table("users").select("casino_balance").eq("id", message.from_user.id).limit(1).execute().data
     if not balance_rows or balance_rows[0].get("casino_balance", 0) < amount:
         balance = balance_rows[0].get("casino_balance", 0) if balance_rows else 0
         await message.answer(f"❌ Недостатньо очок казино. Баланс: <b>{balance}</b>.", parse_mode="HTML")
@@ -400,7 +324,7 @@ async def duel_callback_handler(callback: types.CallbackQuery):
         opponent_id = duel["opponent_id"] if challenger_id == duel["challenger_id"] else duel["challenger_id"]
         amount = duel["amount"]
         current_month = datetime.now().strftime("%Y-%m")
-        balance_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", challenger_id).eq("month", current_month).limit(1).execute().data
+        balance_rows = supabase.table("users").select("casino_balance").eq("id", challenger_id).limit(1).execute().data
         if not balance_rows or balance_rows[0]["casino_balance"] < amount:
             await callback.answer("Недостатньо очок для повторної ставки.", show_alert=True)
             return
@@ -443,8 +367,8 @@ async def duel_callback_handler(callback: types.CallbackQuery):
         return
 
     current_month = datetime.now().strftime("%Y-%m")
-    challenger_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", duel["challenger_id"]).eq("month", current_month).limit(1).execute().data
-    opponent_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", duel["opponent_id"]).eq("month", current_month).limit(1).execute().data
+    challenger_rows = supabase.table("users").select("casino_balance").eq("id", duel["challenger_id"]).limit(1).execute().data
+    opponent_rows = supabase.table("users").select("casino_balance").eq("id", duel["opponent_id"]).limit(1).execute().data
     amount = duel["amount"]
     if not challenger_rows or not opponent_rows or challenger_rows[0]["casino_balance"] < amount or opponent_rows[0]["casino_balance"] < amount:
         await callback.answer("У одного з гравців недостатньо очок.", show_alert=True)
@@ -492,10 +416,10 @@ async def duel_callback_handler(callback: types.CallbackQuery):
     result_side = random.choice(["heads", "tails"])
     winner_id = duel["opponent_id"] if selected_side == result_side else duel["challenger_id"]
     bank = amount * 2
-    supabase.table("leaderboard").update({"casino_balance": challenger_rows[0]["casino_balance"] - amount}).eq("user_id", duel["challenger_id"]).eq("month", current_month).execute()
-    supabase.table("leaderboard").update({"casino_balance": opponent_rows[0]["casino_balance"] - amount}).eq("user_id", duel["opponent_id"]).eq("month", current_month).execute()
+    supabase.table("users").update({"casino_balance": challenger_rows[0]["casino_balance"] - amount}).eq("id", duel["challenger_id"]).execute()
+    supabase.table("users").update({"casino_balance": opponent_rows[0]["casino_balance"] - amount}).eq("id", duel["opponent_id"]).execute()
     winner_balance = (challenger_rows[0]["casino_balance"] if winner_id == duel["challenger_id"] else opponent_rows[0]["casino_balance"]) - amount + bank
-    supabase.table("leaderboard").update({"casino_balance": winner_balance}).eq("user_id", winner_id).eq("month", current_month).execute()
+    supabase.table("users").update({"casino_balance": winner_balance}).eq("id", winner_id).execute()
     supabase.table("duels").update({"status": "finished", "winner_id": winner_id}).eq("id", duel_id).execute()
 
     side_label = "🟡 Орел" if result_side == "heads" else "⚪ Решка"
@@ -615,7 +539,7 @@ async def case_battle_handler(message: types.Message):
         return
 
     current_month = datetime.now().strftime("%Y-%m")
-    balance_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", message.from_user.id).eq("month", current_month).limit(1).execute().data
+    balance_rows = supabase.table("users").select("casino_balance").eq("id", message.from_user.id).limit(1).execute().data
     balance = balance_rows[0].get("casino_balance", 0) if balance_rows else 0
     if balance < amount:
         await message.answer(f"❌ Недостатньо очок казино. Баланс: <b>{balance}</b>.", parse_mode="HTML")
@@ -659,8 +583,8 @@ async def case_battle_callback(callback: types.CallbackQuery):
         return
 
     current_month = datetime.now().strftime("%Y-%m")
-    challenger_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", battle["challenger_id"]).eq("month", current_month).limit(1).execute().data
-    opponent_rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", battle["opponent_id"]).eq("month", current_month).limit(1).execute().data
+    challenger_rows = supabase.table("users").select("casino_balance").eq("id", battle["challenger_id"]).limit(1).execute().data
+    opponent_rows = supabase.table("users").select("casino_balance").eq("id", battle["opponent_id"]).limit(1).execute().data
     amount = battle["amount"]
     if not challenger_rows or not opponent_rows or challenger_rows[0]["casino_balance"] < amount or opponent_rows[0]["casino_balance"] < amount:
         await callback.answer("У одного з гравців недостатньо очок.", show_alert=True)
@@ -716,8 +640,8 @@ async def case_battle_callback(callback: types.CallbackQuery):
     else:
         challenger_balance += amount
         opponent_balance += amount
-    supabase.table("leaderboard").update({"casino_balance": challenger_balance}).eq("user_id", battle["challenger_id"]).eq("month", current_month).execute()
-    supabase.table("leaderboard").update({"casino_balance": opponent_balance}).eq("user_id", battle["opponent_id"]).eq("month", current_month).execute()
+    supabase.table("users").update({"casino_balance": challenger_balance}).eq("id", battle["challenger_id"]).execute()
+    supabase.table("users").update({"casino_balance": opponent_balance}).eq("id", battle["opponent_id"]).execute()
     supabase.table("duels").update({"status": "finished", "winner_id": winner_id}).eq("id", battle_id).execute()
     outcome = "🤝 Нічия! Ставки повернено." if winner_id is None else f"🏆 Переможець забирає <b>{bank}</b> очок!"
     opponent_result = f"📦 <b>Твій дроп:</b> {opponent_drop} ({opponent_value})\n<b>Дроп суперника:</b> {challenger_drop} ({challenger_value})\n\n{outcome}"
@@ -761,25 +685,7 @@ async def exchange_input_handler(message: types.Message):
         return
 
     user_id = message.from_user.id
-    current_month = datetime.now().strftime("%Y-%m")
-    try:
-        rows = supabase.table("leaderboard") \
-            .select("points, casino_balance, exchanged_chess_points") \
-            .eq("user_id", user_id) \
-            .eq("month", current_month) \
-            .limit(1) \
-            .execute().data
-        has_exchange_column = True
-    except APIError as error:
-        if error.args and error.args[0].get("code") != "42703":
-            raise
-        rows = supabase.table("leaderboard") \
-            .select("points, casino_balance") \
-            .eq("user_id", user_id) \
-            .eq("month", current_month) \
-            .limit(1) \
-            .execute().data
-        has_exchange_column = False
+    rows = supabase.table("users").select("points, casino_balance, exchanged_chess_points").eq("id", user_id).limit(1).execute().data
 
     if not rows:
         await message.answer("❌ Спочатку відкрий «🏆 Лідерборд».")
@@ -798,12 +704,8 @@ async def exchange_input_handler(message: types.Message):
     new_points = available_points - amount
     new_balance = player.get("casino_balance", 0) + amount * 10
     update_data = {"points": new_points, "casino_balance": new_balance}
-    if has_exchange_column:
-        update_data["exchanged_chess_points"] = exchanged + amount
-    else:
-        chess_exchange_fallback[user_id] = exchanged + amount
-    supabase.table("leaderboard").update(update_data) \
-        .eq("user_id", user_id).eq("month", current_month).execute()
+    update_data["exchanged_chess_points"] = exchanged + amount
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
     chess_exchange_waiting.discard(user_id)
 
     await message.answer(
@@ -881,7 +783,7 @@ async def battles_handler(message: types.Message):
 @dp.message(Command("leaderboard"))
 @dp.message(F.text == "🏆 Лідерборд")
 async def leaderboard_handler(message: types.Message):
-    users = supabase.table("users").select("id, first_name, username, chess_username").execute().data
+    users = supabase.table("users").select("*").execute().data
     players = [user for user in users if user.get("chess_username")]
 
     if not players:
@@ -893,26 +795,6 @@ async def leaderboard_handler(message: types.Message):
     games_by_player = await asyncio.gather(
         *(get_user_games(user["chess_username"]) for user in players)
     )
-    current_month = datetime.now().strftime("%Y-%m")
-    leaderboard_rows = []
-    try:
-        existing_rows = supabase.table("leaderboard") \
-            .select("user_id, chess_points, casino_balance, daily_bonus_date, exchanged_chess_points") \
-            .eq("month", current_month) \
-            .execute().data
-        has_daily_bonus_column = True
-        has_exchange_column = True
-    except APIError as error:
-        if error.args and error.args[0].get("code") != "42703":
-            raise
-        existing_rows = supabase.table("leaderboard") \
-            .select("user_id, chess_points, casino_balance") \
-            .eq("month", current_month) \
-            .execute().data
-        has_daily_bonus_column = False
-        has_exchange_column = False
-    existing_by_user = {row["user_id"]: row for row in existing_rows}
-
     for user, games in zip(players, games_by_player):
         stats = {"wins": 0, "draws": 0, "losses": 0}
         for game in games:
@@ -927,14 +809,11 @@ async def leaderboard_handler(message: types.Message):
 
         stats["points"] = stats["wins"] * 3 + stats["draws"] - stats["losses"] * 2
         stats["games"] = stats["wins"] + stats["draws"] + stats["losses"]
-        previous = existing_by_user.get(user["id"], {})
-        previous_chess_points = previous.get("chess_points", 0)
-        previous_balance = previous.get("casino_balance", 0)
-        previous_exchanged = previous.get("exchanged_chess_points", chess_exchange_fallback.get(user["id"], 0))
+        previous_chess_points = user.get("chess_points", 0)
+        previous_balance = user.get("casino_balance", 0)
+        previous_exchanged = user.get("exchanged_chess_points", 0)
         available_points = stats["points"] - previous_exchanged
         leaderboard_row = {
-            "user_id": user["id"],
-            "month": current_month,
             "first_name": user.get("first_name") or user.get("username") or "Гравець",
             "username": user.get("username") or "відсутній",
             "chess_username": user["chess_username"],
@@ -943,20 +822,10 @@ async def leaderboard_handler(message: types.Message):
             **stats,
             "points": available_points,
         }
-        if has_daily_bonus_column:
-            leaderboard_row["daily_bonus_date"] = previous.get("daily_bonus_date")
-        if has_exchange_column:
-            leaderboard_row["exchanged_chess_points"] = previous_exchanged
-        leaderboard_rows.append(leaderboard_row)
+        supabase.table("users").update(leaderboard_row).eq("id", user["id"]).execute()
 
-    supabase.table("leaderboard").upsert(
-        leaderboard_rows,
-        on_conflict="user_id,month"
-    ).execute()
-
-    top_players = supabase.table("leaderboard") \
+    top_players = supabase.table("users") \
         .select("first_name, username, chess_username, points, wins, draws, losses, games") \
-        .eq("month", current_month) \
         .order("points", desc=True) \
         .order("wins", desc=True) \
         .order("games", desc=True) \
@@ -1052,24 +921,15 @@ def blackjack_game_text(game, result=None, change=0, balance=None):
 
 
 async def get_blackjack_balance(user_id):
-    current_month = datetime.now().strftime("%Y-%m")
-    rows = supabase.table("leaderboard") \
-        .select("casino_balance") \
-        .eq("user_id", user_id) \
-        .eq("month", current_month) \
-        .limit(1) \
-        .execute().data
-    return current_month, (rows[0].get("casino_balance", 0) if rows else None)
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    return rows[0].get("casino_balance", 0) if rows else None
 
 
 async def finish_blackjack(user_id, result, change):
     game = blackjack_games.pop(user_id)
-    current_month, balance = await get_blackjack_balance(user_id)
+    balance = await get_blackjack_balance(user_id)
     new_balance = balance + change
-    supabase.table("leaderboard").update({"casino_balance": new_balance}) \
-        .eq("user_id", user_id) \
-        .eq("month", current_month) \
-        .execute()
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     return blackjack_game_text(game, result, change, new_balance), new_balance
 
 
@@ -1173,7 +1033,7 @@ async def solo_case_callback(callback: types.CallbackQuery):
     if user_id in solo_case_games:
         await callback.answer("Спочатку заверши поточне відкриття.", show_alert=True)
         return
-    _, balance = await get_blackjack_balance(user_id)
+    balance = await get_blackjack_balance(user_id)
     case = SOLO_CASES[case_type]
     if balance is None:
         await callback.answer("Спочатку відкрий лідерборд.", show_alert=True)
@@ -1208,10 +1068,8 @@ async def solo_case_callback(callback: types.CallbackQuery):
     )
     await asyncio.sleep(0.7)
 
-    current_month = datetime.now().strftime("%Y-%m")
     new_balance = balance - case["cost"] + drop_value
-    supabase.table("leaderboard").update({"casino_balance": new_balance}) \
-        .eq("user_id", user_id).eq("month", current_month).execute()
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     solo_case_games.pop(user_id, None)
     profit = drop_value - case["cost"]
     await rolling_message.edit_text(
@@ -1313,7 +1171,7 @@ async def start_blackjack(message, bet, user_id=None):
     if user_id in blackjack_games:
         await message.answer("🎰 У тебе вже є активна партія. Натисни Hit або Stay.")
         return
-    _, balance = await get_blackjack_balance(user_id)
+    balance = await get_blackjack_balance(user_id)
     if balance is None:
         await message.answer("❌ Спочатку відкрий «🏆 Лідерборд», щоб отримати актуальні очки.")
         return
@@ -1341,7 +1199,7 @@ def dice_result_keyboard(bet):
 
 async def start_dice(message, bet, user_id=None):
     user_id = user_id or message.from_user.id
-    _, balance = await get_blackjack_balance(user_id)
+    balance = await get_blackjack_balance(user_id)
     if balance is None:
         await message.answer("❌ Спочатку відкрий «🏆 Лідерборд», щоб створити баланс казино.")
         return
@@ -1371,9 +1229,7 @@ async def start_dice(message, bet, user_id=None):
         result, change = "🤝 Нічия", 0
 
     new_balance = balance + change
-    current_month = datetime.now().strftime("%Y-%m")
-    supabase.table("leaderboard").update({"casino_balance": new_balance}) \
-        .eq("user_id", user_id).eq("month", current_month).execute()
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     await rolling_message.edit_text(
         f"🎲 <b>КОСТІ</b>\n"
         f"━━━━━━━━━━━━━━\n"
@@ -1515,16 +1371,14 @@ async def mini_profile_api(request):
     if not telegram_user:
         return mini_json_error("Telegram authorization required", 401)
     user_id = telegram_user["id"]
-    month = datetime.now().strftime("%Y-%m")
-    user_rows = supabase.table("users").select("first_name, username").eq("id", user_id).limit(1).execute().data
-    rows = supabase.table("leaderboard").select("points, casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
-    stats = rows[0] if rows else {"points": 0, "casino_balance": 0}
+    user_rows = supabase.table("users").select("first_name, username, points, casino_balance, daily_streak").eq("id", user_id).limit(1).execute().data
     user = user_rows[0] if user_rows else {}
     return web.json_response({
         "user": user.get("first_name") or telegram_user.get("first_name", "Гравець"),
         "username": user.get("username") or telegram_user.get("username", ""),
-        "chess_points": stats.get("points", 0),
-        "casino_balance": stats.get("casino_balance", 0),
+        "chess_points": user.get("points", 0),
+        "casino_balance": user.get("casino_balance", 0),
+        "daily_streak": user.get("daily_streak", 0),
     })
 
 
@@ -1533,16 +1387,8 @@ async def mini_daily_bonus_api(request):
     if not telegram_user:
         return mini_json_error("Telegram authorization required", 401)
     user_id = telegram_user["id"]
-    current_month = datetime.now().strftime("%Y-%m")
     today = datetime.now().date().isoformat()
-    try:
-        rows = supabase.table("leaderboard").select("casino_balance, daily_bonus_date, daily_streak").eq("user_id", user_id).eq("month", current_month).limit(1).execute().data
-        has_bonus_columns = True
-    except APIError as error:
-        if not error.args or error.args[0].get("code") != "42703":
-            raise
-        rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", current_month).limit(1).execute().data
-        has_bonus_columns = False
+    rows = supabase.table("users").select("casino_balance, daily_bonus_date, daily_streak").eq("id", user_id).limit(1).execute().data
     if not rows:
         return mini_json_error("Open the leaderboard first", 404)
     player = rows[0]
@@ -1554,13 +1400,8 @@ async def mini_daily_bonus_api(request):
     streak = previous_streak + 1 if previous_date == yesterday else 1
     bonus = 100 if streak % 7 == 0 else 10
     new_balance = player.get("casino_balance", 0) + bonus
-    update_data = {"casino_balance": new_balance}
-    if has_bonus_columns:
-        update_data.update({"daily_bonus_date": today, "daily_streak": streak})
-    else:
-        daily_bonus_claims[user_id] = today
-        daily_streak_fallback[user_id] = streak
-    supabase.table("leaderboard").update(update_data).eq("user_id", user_id).eq("month", current_month).execute()
+    update_data = {"casino_balance": new_balance, "daily_bonus_date": today, "daily_streak": streak}
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
     return web.json_response({"bonus": bonus, "streak": streak, "casino_balance": new_balance})
 
 
@@ -1578,8 +1419,7 @@ async def mini_blackjack_start_api(request):
     user_id = telegram_user["id"]
     if user_id in mini_blackjack_games:
         return mini_json_error("Game already active")
-    month = datetime.now().strftime("%Y-%m")
-    rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
@@ -1616,11 +1456,10 @@ async def mini_blackjack_action_api(request):
             result, change = "Нічия", 0
     else:
         return mini_json_error("Unknown action")
-    month = datetime.now().strftime("%Y-%m")
-    rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
     balance = rows[0].get("casino_balance", 0) if rows else 0
     new_balance = balance + change
-    supabase.table("leaderboard").update({"casino_balance": new_balance}).eq("user_id", user_id).eq("month", month).execute()
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     finished = {"status": "finished", "result": result, "change": change, "player": game["player_cards"], "dealer": game["dealer_cards"], "total": blackjack_total(game["player_cards"]), "balance": new_balance}
     mini_blackjack_games.pop(user_id, None)
     return web.json_response(finished)
@@ -1637,8 +1476,7 @@ async def mini_dice_play_api(request):
     if bet <= 0:
         return mini_json_error("Invalid bet")
     user_id = telegram_user["id"]
-    month = datetime.now().strftime("%Y-%m")
-    rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
@@ -1653,7 +1491,7 @@ async def mini_dice_play_api(request):
     else:
         result, change = "Нічия", 0
     new_balance = balance + change
-    supabase.table("leaderboard").update({"casino_balance": new_balance}).eq("user_id", user_id).eq("month", month).execute()
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
     return web.json_response({"player": player, "dealer": dealer, "player_total": player_total, "dealer_total": dealer_total, "result": result, "change": change, "balance": new_balance})
 
 

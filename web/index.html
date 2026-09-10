@@ -101,6 +101,22 @@
         if (!response.ok) throw new Error(data.error || 'Помилка сервера');
         return data;
       };
+      const syncProfile = async () => {
+        try {
+          const profile = await miniApi('/api/profile');
+          const profileCard = document.querySelector('#profile .profile-card');
+          if (!profileCard) return;
+          const values = profileCard.querySelectorAll('.stats b');
+          profileCard.querySelector('h2').textContent = profile.user || 'Гравець';
+          profileCard.querySelector('p').textContent = profile.username ? `@${profile.username}` : 'Telegram користувач';
+          if (values[0]) values[0].textContent = Number(profile.casino_balance).toLocaleString('uk-UA');
+          if (values[1]) values[1].textContent = Number(profile.chess_points).toLocaleString('uk-UA');
+          if (values[2]) values[2].textContent = profile.daily_streak || 0;
+        } catch (error) {
+          showToast(error.message);
+        }
+      };
+      syncProfile();
       const formatCards = (cards) => cards.map((value) => `<span style="display:inline-grid;place-items:center;width:43px;height:58px;margin:4px;border:1px solid #b9823c;border-radius:7px;background:#f5eee1;color:#151914;font:24px Georgia">${value === 11 ? 'Т' : value}</span>`).join('');
       const observer = new MutationObserver(() => {
         const oldButton = document.getElementById('game-action');
