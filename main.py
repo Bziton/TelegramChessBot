@@ -655,8 +655,14 @@ async def case_battle_callback(callback: types.CallbackQuery):
         await challenger_message.edit_text(challenger_frame, parse_mode="HTML")
         await asyncio.sleep(pause)
 
-    await callback.message.edit_text(case_roll_frame("КЕЙС СУПЕРНИКА", opponent_drop), parse_mode="HTML")
-    await challenger_message.edit_text(case_roll_frame("ТВІЙ КЕЙС", challenger_drop), parse_mode="HTML")
+    await callback.message.edit_text(
+        case_roll_frame("КЕЙС СУПЕРНИКА · 🎯 ЗУПИНКА", opponent_drop),
+        parse_mode="HTML"
+    )
+    await challenger_message.edit_text(
+        case_roll_frame("ТВІЙ КЕЙС · 🎯 ЗУПИНКА", challenger_drop),
+        parse_mode="HTML"
+    )
     await asyncio.sleep(0.7)
     if challenger_value > opponent_value:
         winner_id = battle["challenger_id"]
@@ -1158,6 +1164,12 @@ async def solo_case_callback(callback: types.CallbackQuery):
             parse_mode="HTML"
         )
         await asyncio.sleep(pause)
+
+    await rolling_message.edit_text(
+        case_roll_frame(f"{case['title']} · 🎯 ЗУПИНКА", drop_name),
+        parse_mode="HTML"
+    )
+    await asyncio.sleep(0.7)
 
     current_month = datetime.now().strftime("%Y-%m")
     new_balance = balance - case["cost"] + drop_value
