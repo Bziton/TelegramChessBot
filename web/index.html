@@ -142,7 +142,6 @@
       let slotMode = false;
       const slotCard = '<button class="game blackjack" data-game="slots"><span class="game-icon">🍒</span><b>Фруктові слоти</b><small>Збери однакові фрукти</small></button>';
       const slotWide = '<button class="game-wide" data-game="slots"><span class="game-icon">🍒</span><div><h3>Фруктові слоти</h3><small>Три однакові символи дають великий виграш</small></div><span class="arrow">›</span></button>';
-      document.querySelector('.games').innerHTML = slotCard;
       document.querySelector('.game-list').innerHTML = slotWide;
       const openSlots = () => {
         slotMode = true;
@@ -257,7 +256,6 @@
       document.head.appendChild(lotStyles);
       const lotMarkup = (lot) => `<article class="lot-card ${lot.className}"><div class="lot-icon">${lot.icon}</div><b>${lot.name}</b><small>${lot.rarity}</small><div class="lot-price"><span>${lot.price} оч.</span><span>до ${lot.prize}</span></div><button class="btn-primary lot-buy" data-lot="${lot.id}">Відкрити</button></article>`;
       const lotsMarkup = `<section class="lots-hero"><div class="label" style="color:var(--green)">Колекція удачі</div><h1>Лоти</h1><p>Обери квиток і відкрий шанс на великий приз у шахових очках.</p></section><section class="lots-grid">${lots.map(lotMarkup).join('')}</section>`;
-      document.querySelector('.games').innerHTML = lotsMarkup;
       document.querySelector('.game-list').innerHTML = lotsMarkup;
       const createParticles = () => { ['♞','♛','♟','✦','✧','♔'].forEach((symbol) => { const particle = document.createElement('span'); particle.className = 'lot-particle'; particle.textContent = symbol; particle.style.left = `${35 + Math.random() * 30}%`; particle.style.top = `${38 + Math.random() * 20}%`; particle.style.setProperty('--x', `${(Math.random() - .5) * 260}px`); particle.style.setProperty('--y', `${-80 - Math.random() * 260}px`); document.body.appendChild(particle); setTimeout(() => particle.remove(), 1900); }); };
       const countPrize = (element, target) => { let value = 0; const step = Math.max(1, Math.ceil(target / 28)); const timer = setInterval(() => { value = Math.min(target, value + step); element.textContent = `+${value.toLocaleString('uk-UA')} оч.`; if (value >= target) clearInterval(timer); }, 30); };
@@ -321,7 +319,6 @@
       `;
       document.head.appendChild(slotStyle);
       const machine = `<section class="slot-stage"><div class="slot-kicker"><span>♞ Шахові слоти</span><span id="slot-balance-label">Очки</span></div><div class="slot-machine"><div class="slot-window" id="slot-window">${symbols.slice(0,3).map(symbol => `<div class="slot-reel">${symbol}</div>`).join('')}</div><div class="slot-line"></div><button class="slot-spin" id="slot-spin">КРУТИТИ</button><div class="slot-bets"><button class="slot-bet active" data-slot-bet="25">25</button><button class="slot-bet" data-slot-bet="80">80</button><button class="slot-bet" data-slot-bet="180">180</button></div><div class="slot-message" id="slot-message">Обери ставку та крути барабани</div></div><p style="color:var(--muted);font-size:11px;text-align:center">🍒 🍋 🍊 🍑 🍉 🍇 🔔 7️⃣ ♞ ♛ ♔</p></section>`;
-      document.querySelector('.games').innerHTML = `<section class="lots-hero"><div class="label" style="color:var(--green)">Преміальний зал</div><h1>Фруктові лоти</h1><p>Класичні барабани, шахові символи та призи в очках.</p></section>${machine}`;
       document.querySelector('.game-list').innerHTML = machine;
       let bet = 25;
       const rain = (jackpot) => { const icons = jackpot ? ['♔','♛','♞','7️⃣','✦'] : ['✦','♟','♞']; for (let index = 0; index < 18; index += 1) { const item = document.createElement('span'); item.className = 'slot-rain'; item.textContent = icons[index % icons.length]; item.style.left = `${Math.random() * 100}%`; item.style.animationDelay = `${Math.random() * .6}s`; document.body.appendChild(item); setTimeout(() => item.remove(), 3000); } };
