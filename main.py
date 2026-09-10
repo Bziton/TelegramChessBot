@@ -54,6 +54,12 @@ def get_main_keyboard():
     builder.adjust(1 if MINI_APP_URL else 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
+
+def mini_app_keyboard():
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="🚀 Відкрити Mini App", web_app=types.WebAppInfo(url=MINI_APP_URL))
+    return keyboard.as_markup()
+
 # Динамічне отримання ігор за ПОТОЧНИЙ місяць
 async def get_user_games(chess_username: str):
     current_date = datetime.now().strftime("%Y/%m")  # Автоматично бере YYYY/MM
@@ -105,6 +111,22 @@ async def cmd_start(message: types.Message):
         greeting,
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
+    )
+    if MINI_APP_URL:
+        await message.answer(
+            "Відкрий казино через цю кнопку, щоб Telegram передав профіль і баланс:",
+            reply_markup=mini_app_keyboard()
+        )
+
+
+@dp.message(Command("app"))
+async def mini_app_command(message: types.Message):
+    if not MINI_APP_URL:
+        await message.answer("Mini App URL ще не налаштований.")
+        return
+    await message.answer(
+        "🚀 Відкрий Mini App через Telegram:",
+        reply_markup=mini_app_keyboard()
     )
 
 @dp.message(Command("set_chess"))
