@@ -1079,7 +1079,7 @@ async def casino_menu_handler(message: types.Message):
 @dp.callback_query(F.data == "casino:solo")
 async def casino_solo_handler(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(
+    await callback.message.answer(
         "🤖 <b>САМ ПРОТИ БОТА</b>\n\n"
         "Обери гру:",
         reply_markup=solo_games_keyboard(),
@@ -1125,7 +1125,7 @@ async def solo_case_callback(callback: types.CallbackQuery):
     case_type = callback.data.split(":", maxsplit=1)[1]
     if case_type == "menu":
         await callback.answer()
-        await callback.message.edit_text(
+        await callback.message.answer(
             "🤖 <b>САМ ПРОТИ БОТА</b>\n\nОбери гру:",
             reply_markup=solo_games_keyboard(),
             parse_mode="HTML"
