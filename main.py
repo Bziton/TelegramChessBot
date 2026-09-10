@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import random
+import time
 from html import escape
 import os
 import aiohttp
@@ -39,6 +40,7 @@ daily_bonus_column_available = True
 daily_bonus_claims = {}
 daily_streak_fallback = {}
 mini_blackjack_games = {}
+mini_crash_games = {}
 
 CHESS_HEADERS = {"User-Agent": "TelegramChessBot/1.0 (contact: your_email@example.com)"}
 
@@ -1608,6 +1610,62 @@ async def mini_wheel_play_api(request):
     return web.json_response({"sector": sector["label"], "multiplier": landed_multiplier, "selected_multiplier": selected_multiplier, "sector_index": sector_index, "payout": payout if landed_multiplier == selected_multiplier else 0, "change": change if landed_multiplier == selected_multiplier else -bet, "balance": new_balance if landed_multiplier == selected_multiplier else balance - bet})
 
 
+def crash_point():
+    return round(max(1.01, min(25.0, 1 + random.expovariate(0.42))), 2)
+
+
+async def mini_crash_start_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    try:
+        bet = int((await request.json()).get("bet", 0))
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid bet")
+    if bet <= 0:
+        return mini_json_error("Invalid bet")
+    user_id = telegram_user["id"]
+    if user_id in mini_crash_games:
+        return mini_json_error("Round already active")
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    if bet > balance:
+        return mini_json_error("Insufficient balance")
+    point = crash_point()
+    started_at = time.time()
+    mini_crash_games[user_id] = {"bet": bet, "point": point, "started_at": started_at}
+    return web.json_response({"bet": bet, "balance": balance, "started_at": started_at, "crash_point": point})
+
+
+async def mini_crash_cashout_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    user_id = telegram_user["id"]
+    game = mini_crash_games.get(user_id)
+    if not game:
+        return mini_json_error("No active round")
+    elapsed = max(0, time.time() - game["started_at"])
+    current_multiplier = round(1 + elapsed * 0.92, 2)
+    if current_multiplier >= game["point"]:
+        multiplier = game["point"]
+        change = -game["bet"]
+        result = "Крах"
+        payout = 0
+    else:
+        multiplier = current_multiplier
+        payout = int(game["bet"] * multiplier)
+        change = payout - game["bet"]
+        result = "Забрано"
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    new_balance = balance + change
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    record_game(user_id, "crash", game["bet"], change, result, {"multiplier": multiplier, "payout": payout})
+    mini_crash_games.pop(user_id, None)
+    return web.json_response({"result": result, "multiplier": multiplier, "payout": payout, "change": change, "balance": new_balance})
+
+
 async def mini_lot_open_api(request):
     telegram_user = get_mini_app_user(request)
     if not telegram_user:
@@ -1660,6 +1718,8 @@ async def run_web_server():
     app.router.add_post("/api/dice/play", mini_dice_play_api)
     app.router.add_post("/api/slots/play", mini_slots_play_api)
     app.router.add_post("/api/wheel/play", mini_wheel_play_api)
+    app.router.add_post("/api/crash/start", mini_crash_start_api)
+    app.router.add_post("/api/crash/cashout", mini_crash_cashout_api)
     app.router.add_post("/api/lots/open", mini_lot_open_api)
     runner = web.AppRunner(app)
     await runner.setup()
