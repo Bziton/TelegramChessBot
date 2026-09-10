@@ -1588,17 +1588,17 @@ async def mini_wheel_play_api(request):
         return mini_json_error("Invalid bet")
     if bet <= 0:
         return mini_json_error("Invalid bet")
-    if selected_multiplier not in {2, 5, 10, 20, 50}:
+    if selected_multiplier not in {2, 5, 10, 20}:
         return mini_json_error("Invalid multiplier")
     user_id = telegram_user["id"]
     rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
     balance = rows[0].get("casino_balance", 0) if rows else 0
     if bet > balance:
         return mini_json_error("Insufficient balance")
-    sectors = [2, 2, 2, 5, 5, 10, 20, 50]
+    sectors = [2, 2, 0, 5, 0, 10, 0, 20]
     sector_index = random.randrange(len(sectors))
     landed_multiplier = sectors[sector_index]
-    sector = {"label": f"x{landed_multiplier}", "multiplier": landed_multiplier}
+    sector = {"label": f"x{landed_multiplier}" if landed_multiplier else "Пусто", "multiplier": landed_multiplier}
     won = landed_multiplier == selected_multiplier
     payout = bet * landed_multiplier if won else 0
     change = payout - bet
