@@ -505,6 +505,42 @@ def case_drop():
     return name, value
 
 
+SOLO_CASES = {
+    "common": {"title": "🟫 ЗВИЧАЙНИЙ КЕЙС", "cost": 10, "weight_bonus": 1},
+    "rare": {"title": "🟪 РІДКІСНИЙ КЕЙС", "cost": 30, "weight_bonus": 2},
+    "legendary": {"title": "🟨 ЛЕГЕНДАРНИЙ КЕЙС", "cost": 100, "weight_bonus": 4},
+}
+
+
+def solo_case_keyboard():
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="🟫 Звичайний · 10", callback_data="solo_case:common")
+    keyboard.button(text="🟪 Рідкісний · 30", callback_data="solo_case:rare")
+    keyboard.button(text="🟨 Легендарний · 100", callback_data="solo_case:legendary")
+    keyboard.button(text="⬅️ Назад", callback_data="casino:solo")
+    keyboard.adjust(1)
+    return keyboard.as_markup()
+
+
+def solo_case_drop(case_type):
+    drop_sets = {
+        "common": [("🪙 Монетка", 5, 55), ("💵 Купюра", 15, 35), ("💎 Алмаз", 40, 10)],
+        "rare": [("💵 Купюра", 15, 40), ("💎 Алмаз", 40, 38), ("👑 Корона", 100, 18), ("🌟 Джекпот", 250, 4)],
+        "legendary": [("💎 Алмаз", 40, 25), ("👑 Корона", 100, 45), ("🌟 Джекпот", 250, 30)],
+    }
+    drops = drop_sets[case_type]
+    name, value, _ = random.choices(drops, weights=[drop[2] for drop in drops], k=1)[0]
+    return name, value
+
+
+def solo_case_result_keyboard(case_type):
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="🔁 Відкрити ще раз", callback_data=f"solo_case:{case_type}")
+    keyboard.button(text="📦 Інший кейс", callback_data="solo_case:menu")
+    keyboard.adjust(1)
+    return keyboard.as_markup()
+
+
 def case_roll_frame(title, center_drop):
     drop_names = ["🪙", "💵", "💎", "👑", "🌟"]
     preview = [random.choice(drop_names) for _ in range(4)]
@@ -916,6 +952,7 @@ def blackjack_total(cards):
 blackjack_games = {}
 blackjack_waiting_for_bet = set()
 dice_waiting_for_bet = set()
+solo_case_games = {}
 
 
 def blackjack_keyboard(game_active=True):
@@ -1006,6 +1043,7 @@ def solo_games_keyboard():
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text="🃏 Blackjack", callback_data="casino:solo:blackjack")
     keyboard.button(text="🎲 Кості", callback_data="casino:solo:dice")
+    keyboard.button(text="📦 Кейси", callback_data="casino:solo:cases")
     keyboard.button(text="⬅️ Назад", callback_data="casino:menu")
     keyboard.adjust(1)
     return keyboard.as_markup()
@@ -1041,6 +1079,17 @@ async def casino_solo_handler(callback: types.CallbackQuery):
     )
 
 
+@dp.callback_query(F.data == "casino:solo:cases")
+async def casino_solo_cases_handler(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "📦 <b>КЕЙСИ ПРОТИ БОТА</b>\n\n"
+        "Обери кейс. Після відкриття рулетка поступово зупиниться на твоєму дропі:",
+        reply_markup=solo_case_keyboard(),
+        parse_mode="HTML"
+    )
+
+
 @dp.callback_query(F.data == "casino:solo:blackjack")
 async def casino_blackjack_handler(callback: types.CallbackQuery):
     blackjack_waiting_for_bet.add(callback.from_user.id)
@@ -1059,6 +1108,71 @@ async def casino_dice_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "🎲 <b>КОСТІ</b>\n\n"
         "Введи ставку числом, наприклад <code>20</code>:",
+        parse_mode="HTML"
+    )
+
+
+@dp.callback_query(F.data.startswith("solo_case:"))
+async def solo_case_callback(callback: types.CallbackQuery):
+    case_type = callback.data.split(":", maxsplit=1)[1]
+    if case_type == "menu":
+        await callback.answer()
+        await callback.message.edit_text(
+            "🤖 <b>САМ ПРОТИ БОТА</b>\n\nОбери гру:",
+            reply_markup=solo_games_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    if case_type not in SOLO_CASES:
+        await callback.answer("Невідомий кейс.", show_alert=True)
+        return
+
+    user_id = callback.from_user.id
+    if user_id in solo_case_games:
+        await callback.answer("Спочатку заверши поточне відкриття.", show_alert=True)
+        return
+    _, balance = await get_blackjack_balance(user_id)
+    case = SOLO_CASES[case_type]
+    if balance is None:
+        await callback.answer("Спочатку відкрий лідерборд.", show_alert=True)
+        return
+    if balance < case["cost"]:
+        await callback.answer(f"Недостатньо очок. Потрібно: {case['cost']}.", show_alert=True)
+        return
+
+    solo_case_games[user_id] = case_type
+    await callback.answer("Кейс відкривається!")
+    drop_name, drop_value = solo_case_drop(case_type)
+    rolling_message = await callback.message.edit_text(
+        case_roll_frame(case["title"], "🔒"),
+        parse_mode="HTML"
+    )
+    animation_steps = [
+        (0.14, "🎁 КРУТИМО"), (0.14, "🎁 КРУТИМО"),
+        (0.18, "🎁 КРУТИМО"), (0.22, "🎁 СПОВІЛЬНЮЄМО"),
+        (0.30, "🎁 СПОВІЛЬНЮЄМО"), (0.42, "🎁 ОСТАННІЙ КАДР"),
+    ]
+    for pause, title in animation_steps:
+        await rolling_message.edit_text(
+            case_roll_frame(f"{case['title']} · {title}", "🔒"),
+            parse_mode="HTML"
+        )
+        await asyncio.sleep(pause)
+
+    current_month = datetime.now().strftime("%Y-%m")
+    new_balance = balance - case["cost"] + drop_value
+    supabase.table("leaderboard").update({"casino_balance": new_balance}) \
+        .eq("user_id", user_id).eq("month", current_month).execute()
+    solo_case_games.pop(user_id, None)
+    profit = drop_value - case["cost"]
+    await rolling_message.edit_text(
+        f"🎉 <b>КЕЙС ВІДКРИТО!</b>\n━━━━━━━━━━━━━━\n"
+        f"{case['title']}\n\n"
+        f"Твій дроп: <b>{drop_name}</b>\n"
+        f"Вартість: <b>{drop_value}</b> оч.\n"
+        f"Результат: <b>{profit:+d}</b> оч.\n\n"
+        f"🎰 Баланс: <b>{new_balance}</b> оч.",
+        reply_markup=solo_case_result_keyboard(case_type),
         parse_mode="HTML"
     )
 
