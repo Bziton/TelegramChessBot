@@ -1576,6 +1576,40 @@ async def mini_slots_play_api(request):
     })
 
 
+async def mini_wheel_play_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    try:
+        bet = int((await request.json()).get("bet", 0))
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid bet")
+    if bet <= 0:
+        return mini_json_error("Invalid bet")
+    user_id = telegram_user["id"]
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    if bet > balance:
+        return mini_json_error("Insufficient balance")
+    sectors = [
+        {"label": "-1x", "multiplier": 0},
+        {"label": "x2", "multiplier": 2},
+        {"label": "-1x", "multiplier": 0},
+        {"label": "x3", "multiplier": 3},
+        {"label": "-1x", "multiplier": 0},
+        {"label": "♞ x5", "multiplier": 5},
+        {"label": "-1x", "multiplier": 0},
+        {"label": "x2", "multiplier": 2},
+    ]
+    sector = random.choice(sectors)
+    payout = bet * sector["multiplier"]
+    change = payout - bet
+    new_balance = balance + change
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    record_game(user_id, "wheel", bet, change, "Виграш" if payout else "Програш", {"sector": sector["label"], "payout": payout})
+    return web.json_response({"sector": sector["label"], "multiplier": sector["multiplier"], "payout": payout, "change": change, "balance": new_balance})
+
+
 async def mini_lot_open_api(request):
     telegram_user = get_mini_app_user(request)
     if not telegram_user:
@@ -1627,6 +1661,7 @@ async def run_web_server():
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)
     app.router.add_post("/api/dice/play", mini_dice_play_api)
     app.router.add_post("/api/slots/play", mini_slots_play_api)
+    app.router.add_post("/api/wheel/play", mini_wheel_play_api)
     app.router.add_post("/api/lots/open", mini_lot_open_api)
     runner = web.AppRunner(app)
     await runner.setup()
