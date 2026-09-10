@@ -1531,6 +1531,44 @@ async def mini_slots_play_api(request):
     })
 
 
+async def mini_lot_open_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    try:
+        lot_type = (await request.json()).get("lot", "common")
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid lot")
+    lots = {
+        "common": {"price": 25, "prize": 80, "rarity": "common"},
+        "rare": {"price": 80, "prize": 300, "rarity": "rare"},
+        "epic": {"price": 180, "prize": 900, "rarity": "epic"},
+        "legendary": {"price": 400, "prize": 2400, "rarity": "legendary"},
+    }
+    lot = lots.get(lot_type)
+    if not lot:
+        return mini_json_error("Invalid lot")
+    user_id = telegram_user["id"]
+    rows = supabase.table("users").select("casino_balance").eq("id", user_id).limit(1).execute().data
+    balance = rows[0].get("casino_balance", 0) if rows else 0
+    if balance < lot["price"]:
+        return mini_json_error("Insufficient balance")
+    roll = random.random()
+    win_chance = {"common": 0.42, "rare": 0.30, "epic": 0.20, "legendary": 0.12}[lot_type]
+    won = roll < win_chance
+    prize = lot["prize"] if won else 0
+    new_balance = balance - lot["price"] + prize
+    supabase.table("users").update({"casino_balance": new_balance}).eq("id", user_id).execute()
+    return web.json_response({
+        "lot": lot_type,
+        "rarity": lot["rarity"],
+        "won": won,
+        "prize": prize,
+        "price": lot["price"],
+        "balance": new_balance,
+    })
+
+
 async def run_web_server():
     app = web.Application()
     app.router.add_get("/", mini_app_handler)
@@ -1541,6 +1579,7 @@ async def run_web_server():
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)
     app.router.add_post("/api/dice/play", mini_dice_play_api)
     app.router.add_post("/api/slots/play", mini_slots_play_api)
+    app.router.add_post("/api/lots/open", mini_lot_open_api)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)

@@ -207,5 +207,57 @@
       }, true);
     })();
   </script>
+  <script>
+    (() => {
+      const lotApi = async (path, options = {}) => {
+        const response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', 'X-Telegram-Init-Data':window.Telegram?.WebApp?.initData || '', ...(options.headers || {}) } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Помилка сервера');
+        return data;
+      };
+      const lots = [
+        { id:'common', name:'Золотий жетон', rarity:'Звичайний', price:25, prize:80, icon:'♟', className:'common' },
+        { id:'rare', name:'Срібний кінь', rarity:'Рідкісний', price:80, prize:300, icon:'♞', className:'rare' },
+        { id:'epic', name:'Королівський квиток', rarity:'Епічний', price:180, prize:900, icon:'♛', className:'epic' },
+        { id:'legendary', name:'Діамантова партія', rarity:'Легендарний', price:400, prize:2400, icon:'♔', className:'legendary' },
+      ];
+      const lotStyles = document.createElement('style');
+      lotStyles.textContent = `
+        .lots-hero{padding:20px;border:1px solid #315246;border-radius:18px;background:linear-gradient(135deg,#132d26,#101719);margin-bottom:16px}
+        .lots-hero h1{margin:6px 0 8px}.lots-hero p{color:#aab9b1;font-size:12px}.lots-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .lot-card{position:relative;min-height:182px;padding:15px;overflow:hidden;border:1px solid #ffffff18;border-radius:16px;text-align:left;background:linear-gradient(145deg,#192124,#101516);transition:transform .25s,box-shadow .25s}
+        .lot-card:before{content:"";position:absolute;inset:0;opacity:.18;background:linear-gradient(120deg,transparent 30%,#fff 48%,transparent 64%);transform:translateX(-130%)}.lot-card:hover:before{animation:lot-shimmer 1.2s ease}
+        .lot-card:hover{transform:translateY(-3px)}.lot-card.rare{border-color:#85a7b8;box-shadow:0 0 18px #85a7b822}.lot-card.epic{border-color:#c77cff;box-shadow:0 0 22px #c77cff2b}.lot-card.legendary{border-color:var(--gold);box-shadow:0 0 25px #d6a65a4d}
+        .lot-icon{display:grid;place-items:center;width:40px;height:40px;margin-bottom:12px;border:1px solid #d6a65a66;border-radius:12px;color:var(--gold-light);background:#d6a65a18;font:26px Georgia}.lot-card b{display:block;font-size:14px}.lot-card small{display:block;color:var(--muted);font-size:10px}.lot-price{display:flex;justify-content:space-between;margin-top:14px;color:var(--gold-light);font-size:12px}.lot-buy{width:100%;margin-top:10px;padding:8px 6px;font-size:11px}
+        .lot-modal{position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:22px;background:#050709d9;backdrop-filter:blur(10px)}.lot-ticket{width:min(100%,360px);padding:25px 20px;border:1px solid var(--gold);border-radius:20px;text-align:center;background:linear-gradient(145deg,#222016,#111817);box-shadow:0 0 50px #d6a65a55;animation:ticket-in .5s ease both}.lot-ticket h2{margin:8px 0;color:var(--gold-light);font:800 25px 'Playfair Display',serif}.lot-ticket p{color:var(--muted)}.lot-ticket .ticket-symbol{font-size:58px;color:var(--gold-light);text-shadow:0 0 25px #f6d28a}.lot-ticket button{margin-top:18px}
+        .lot-win{animation:win-pulse .8s ease infinite alternate}.lot-prize{margin:14px 0;color:var(--gold-light);font:800 42px 'Playfair Display',serif;text-shadow:0 0 25px #f6d28a}.lot-particle{position:fixed;z-index:22;pointer-events:none;color:var(--gold-light);font-size:22px;animation:particle-fly 1.8s ease-out forwards}@keyframes lot-shimmer{to{transform:translateX(130%)}}@keyframes ticket-in{from{opacity:0;transform:rotateY(70deg) scale(.75)}to{opacity:1;transform:none}}@keyframes win-pulse{from{box-shadow:0 0 25px #d6a65a55}to{box-shadow:0 0 70px #f6d28acc}}@keyframes particle-fly{from{opacity:1;transform:translate(0,0) rotate(0)}to{opacity:0;transform:translate(var(--x),var(--y)) rotate(480deg)}}
+        .lot-lose{animation:lot-fade .8s ease both}@keyframes lot-fade{to{opacity:.35;filter:grayscale(1);transform:scale(.92)}}
+      `;
+      document.head.appendChild(lotStyles);
+      const lotMarkup = (lot) => `<article class="lot-card ${lot.className}"><div class="lot-icon">${lot.icon}</div><b>${lot.name}</b><small>${lot.rarity}</small><div class="lot-price"><span>${lot.price} оч.</span><span>до ${lot.prize}</span></div><button class="btn-primary lot-buy" data-lot="${lot.id}">Відкрити</button></article>`;
+      const lotsMarkup = `<section class="lots-hero"><div class="label" style="color:var(--green)">Колекція удачі</div><h1>Лоти</h1><p>Обери квиток і відкрий шанс на великий приз у шахових очках.</p></section><section class="lots-grid">${lots.map(lotMarkup).join('')}</section>`;
+      document.querySelector('.games').innerHTML = lotsMarkup;
+      document.querySelector('.game-list').innerHTML = lotsMarkup;
+      const createParticles = () => { ['♞','♛','♟','✦','✧','♔'].forEach((symbol) => { const particle = document.createElement('span'); particle.className = 'lot-particle'; particle.textContent = symbol; particle.style.left = `${35 + Math.random() * 30}%`; particle.style.top = `${38 + Math.random() * 20}%`; particle.style.setProperty('--x', `${(Math.random() - .5) * 260}px`); particle.style.setProperty('--y', `${-80 - Math.random() * 260}px`); document.body.appendChild(particle); setTimeout(() => particle.remove(), 1900); }); };
+      const countPrize = (element, target) => { let value = 0; const step = Math.max(1, Math.ceil(target / 28)); const timer = setInterval(() => { value = Math.min(target, value + step); element.textContent = `+${value.toLocaleString('uk-UA')} оч.`; if (value >= target) clearInterval(timer); }, 30); };
+      const openLot = async (lotId) => {
+        const lot = lots.find(item => item.id === lotId);
+        const modal = document.createElement('div'); modal.className = 'lot-modal';
+        modal.innerHTML = `<div class="lot-ticket"><div class="ticket-symbol">${lot.icon}</div><h2>${lot.name}</h2><p>${lot.rarity} квиток · ${lot.price} оч.</p><button class="btn-primary" disabled>Відкриваємо...</button></div>`;
+        document.body.appendChild(modal);
+        try {
+          const result = await lotApi('/api/lots/open', { method:'POST', body:JSON.stringify({ lot:lot.id }) });
+          const ticket = modal.querySelector('.lot-ticket');
+          if (result.won) {
+            ticket.classList.add('lot-win'); ticket.innerHTML = `<div class="ticket-symbol">${lot.icon}</div><h2>ВЕЛИКА ПЕРЕМОГА!</h2><div class="lot-prize" id="lot-prize">+0 оч.</div><p>${lot.rarity} квиток приніс приз.</p><button class="btn-primary" id="lot-close">Забрати приз</button>`; createParticles(); countPrize(document.getElementById('lot-prize'), result.prize);
+          } else {
+            ticket.classList.add('lot-lose'); ticket.innerHTML = `<div class="ticket-symbol">${lot.icon}</div><h2>Цього разу без призу</h2><p>Квиток розчинився, але наступний шанс уже чекає.</p><button class="btn-primary" id="lot-close">Закрити</button>`;
+          }
+          setBalance(result.balance); modal.querySelector('#lot-close').onclick = () => modal.remove();
+        } catch (error) { modal.querySelector('.lot-ticket').innerHTML = `<h2>Не вдалося відкрити</h2><p>${error.message}</p><button class="btn-primary" id="lot-close">Закрити</button>`; modal.querySelector('#lot-close').onclick = () => modal.remove(); }
+      };
+      document.addEventListener('click', (event) => { const button = event.target.closest('[data-lot]'); if (button) openLot(button.dataset.lot); });
+    })();
+  </script>
 </body>
 </html>
