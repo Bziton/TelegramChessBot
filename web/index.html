@@ -92,5 +92,64 @@
     const refreshProfile = async () => { try { const profile = await api('/api/profile'); setBalance(profile.casino_balance); document.getElementById('leader-points').textContent = Number(profile.chess_points).toLocaleString('uk-UA'); } catch (error) { showToast('Відкрий мініапку через Telegram, щоб завантажити баланс.'); } };
     refreshProfile();
   </script>
+  <script>
+    (() => {
+      const telegram = window.Telegram?.WebApp;
+      const miniApi = async (path, options = {}) => {
+        const response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', 'X-Telegram-Init-Data':telegram?.initData || '', ...(options.headers || {}) } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Помилка сервера');
+        return data;
+      };
+      const formatCards = (cards) => cards.map((value) => `<span style="display:inline-grid;place-items:center;width:43px;height:58px;margin:4px;border:1px solid #b9823c;border-radius:7px;background:#f5eee1;color:#151914;font:24px Georgia">${value === 11 ? 'Т' : value}</span>`).join('');
+      const observer = new MutationObserver(() => {
+        const oldButton = document.getElementById('game-action');
+        if (!oldButton || oldButton.textContent.includes('Зіграти') || oldButton.dataset.replaced === 'true') return;
+        const panel = document.getElementById('game-panel');
+        const promo = oldButton.closest('.promo');
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end';
+        actions.innerHTML = '<button class="btn-primary" id="mini-hit">Взяти карту</button><button class="btn-primary" id="mini-stay">Зупинитися</button>';
+        oldButton.replaceWith(actions);
+        const play = async (action) => {
+          actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+          try {
+            const game = await miniApi('/api/blackjack/action', { method:'POST', body:JSON.stringify({ action }) });
+            if (game.status === 'finished') {
+              const event = new CustomEvent('mini-blackjack-finished', { detail: game });
+              document.dispatchEvent(event);
+            } else {
+              const labels = panel.querySelectorAll('.label');
+              const cardGroups = panel.querySelectorAll('[style*="margin:10px 0"]');
+              if (cardGroups.length >= 2) cardGroups[1].innerHTML = formatCards(game.player);
+              if (labels.length >= 2) labels[1].textContent = `Ти · ${game.total}`;
+              actions.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+            }
+          } catch (error) { actions.querySelectorAll('button').forEach((button) => { button.disabled = false; }); showToast(error.message); }
+        };
+        actions.querySelector('#mini-hit').onclick = () => play('hit');
+        actions.querySelector('#mini-stay').onclick = () => play('stay');
+      });
+      document.addEventListener('mini-blackjack-finished', (event) => {
+        const game = event.detail;
+        const panel = document.getElementById('game-panel');
+        panel.innerHTML = `<div class="label">Дилер</div><div style="margin:10px 0">${formatCards(game.dealer)}</div><div class="label">Ти · ${game.total}</div><div style="margin:10px 0">${formatCards(game.player)}</div><div class="promo" style="margin-top:16px"><div><h3>${game.result}</h3><p>${game.change > 0 ? '+' : ''}${game.change} оч.</p></div><button class="btn-primary" id="mini-play-again">Зіграти ще</button></div>`;
+        if (game.balance !== undefined) {
+          const formatted = Number(game.balance).toLocaleString('uk-UA');
+          ['balance', 'profile-balance', 'stake-balance'].forEach((id) => { const element = document.getElementById(id); if (element) element.textContent = formatted; });
+        }
+        document.getElementById('mini-play-again').onclick = () => document.getElementById('start-game').click();
+      });
+      observer.observe(document.getElementById('game-panel'), { childList:true, subtree:true });
+      document.addEventListener('click', async (event) => {
+        const button = event.target.closest('#bonus');
+        if (!button) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        button.disabled = true;
+        try { const result = await miniApi('/api/daily-bonus', { method:'POST' }); button.textContent = 'Забрано'; showToast(`Щоденну нагороду забрано: +${result.bonus} очок`); } catch (error) { button.disabled = false; showToast(error.message); }
+      }, true);
+    })();
+  </script>
 </body>
 </html>

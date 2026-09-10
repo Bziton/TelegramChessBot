@@ -1484,7 +1484,7 @@ async def cmd_leaderboard(message: types.Message):
 
 
 async def mini_app_handler(request):
-    return web.FileResponse("web/index.html")
+    return web.FileResponse("web/index.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 def get_mini_app_user(request):
@@ -1516,13 +1516,52 @@ async def mini_profile_api(request):
         return mini_json_error("Telegram authorization required", 401)
     user_id = telegram_user["id"]
     month = datetime.now().strftime("%Y-%m")
+    user_rows = supabase.table("users").select("first_name, username").eq("id", user_id).limit(1).execute().data
     rows = supabase.table("leaderboard").select("points, casino_balance").eq("user_id", user_id).eq("month", month).limit(1).execute().data
     stats = rows[0] if rows else {"points": 0, "casino_balance": 0}
+    user = user_rows[0] if user_rows else {}
     return web.json_response({
-        "user": telegram_user.get("first_name", "Гравець"),
+        "user": user.get("first_name") or telegram_user.get("first_name", "Гравець"),
+        "username": user.get("username") or telegram_user.get("username", ""),
         "chess_points": stats.get("points", 0),
         "casino_balance": stats.get("casino_balance", 0),
     })
+
+
+async def mini_daily_bonus_api(request):
+    telegram_user = get_mini_app_user(request)
+    if not telegram_user:
+        return mini_json_error("Telegram authorization required", 401)
+    user_id = telegram_user["id"]
+    current_month = datetime.now().strftime("%Y-%m")
+    today = datetime.now().date().isoformat()
+    try:
+        rows = supabase.table("leaderboard").select("casino_balance, daily_bonus_date, daily_streak").eq("user_id", user_id).eq("month", current_month).limit(1).execute().data
+        has_bonus_columns = True
+    except APIError as error:
+        if not error.args or error.args[0].get("code") != "42703":
+            raise
+        rows = supabase.table("leaderboard").select("casino_balance").eq("user_id", user_id).eq("month", current_month).limit(1).execute().data
+        has_bonus_columns = False
+    if not rows:
+        return mini_json_error("Open the leaderboard first", 404)
+    player = rows[0]
+    if player.get("daily_bonus_date") == today or daily_bonus_claims.get(user_id) == today:
+        return mini_json_error("Daily bonus already claimed", 409)
+    previous_date = player.get("daily_bonus_date")
+    previous_streak = player.get("daily_streak", daily_streak_fallback.get(user_id, 0))
+    yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+    streak = previous_streak + 1 if previous_date == yesterday else 1
+    bonus = 100 if streak % 7 == 0 else 10
+    new_balance = player.get("casino_balance", 0) + bonus
+    update_data = {"casino_balance": new_balance}
+    if has_bonus_columns:
+        update_data.update({"daily_bonus_date": today, "daily_streak": streak})
+    else:
+        daily_bonus_claims[user_id] = today
+        daily_streak_fallback[user_id] = streak
+    supabase.table("leaderboard").update(update_data).eq("user_id", user_id).eq("month", current_month).execute()
+    return web.json_response({"bonus": bonus, "streak": streak, "casino_balance": new_balance})
 
 
 async def mini_blackjack_start_api(request):
@@ -1530,7 +1569,10 @@ async def mini_blackjack_start_api(request):
     if not telegram_user:
         return mini_json_error("Telegram authorization required", 401)
     payload = await request.json()
-    bet = int(payload.get("bet", 0))
+    try:
+        bet = int(payload.get("bet", 0))
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid bet")
     if bet <= 0:
         return mini_json_error("Invalid bet")
     user_id = telegram_user["id"]
@@ -1588,7 +1630,10 @@ async def mini_dice_play_api(request):
     telegram_user = get_mini_app_user(request)
     if not telegram_user:
         return mini_json_error("Telegram authorization required", 401)
-    bet = int((await request.json()).get("bet", 0))
+    try:
+        bet = int((await request.json()).get("bet", 0))
+    except (TypeError, ValueError):
+        return mini_json_error("Invalid bet")
     if bet <= 0:
         return mini_json_error("Invalid bet")
     user_id = telegram_user["id"]
@@ -1617,6 +1662,7 @@ async def run_web_server():
     app.router.add_get("/", mini_app_handler)
     app.router.add_get("/health", lambda request: web.json_response({"status": "ok"}))
     app.router.add_get("/api/profile", mini_profile_api)
+    app.router.add_post("/api/daily-bonus", mini_daily_bonus_api)
     app.router.add_post("/api/blackjack/start", mini_blackjack_start_api)
     app.router.add_post("/api/blackjack/action", mini_blackjack_action_api)
     app.router.add_post("/api/dice/play", mini_dice_play_api)
