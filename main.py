@@ -21,6 +21,8 @@ SUPABASE_URL = raw_url.split("/rest/v1")[0].rstrip("/")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
 MINI_APP_URL = os.getenv("MINI_APP_URL", "").strip()
+if MINI_APP_URL and not MINI_APP_URL.startswith(("https://", "http://")):
+    MINI_APP_URL = f"https://{MINI_APP_URL}"
 WEB_PORT = int(os.getenv("PORT", "8080"))
 
 if not SUPABASE_URL or not SUPABASE_KEY:
