@@ -122,6 +122,7 @@
     const balance = document.getElementById('balance');
     const panel = document.getElementById('game-panel');
     const initData = tg?.initData || '';
+    let lastBet = 0;
     const showStatus = (text) => { status.textContent = text; status.classList.add('show'); };
     const api = async (path, options = {}) => {
       const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': initData, ...(options.headers || {}) } });
@@ -139,19 +140,22 @@
         showStatus('Відкрий Mini App саме з Telegram, щоб завантажити профіль.');
       }
     };
-    const showBlackjack = () => {
+    const showBlackjack = (presetBet = '') => {
       panel.classList.add('show');
-      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Введи ставку і зіграй проти дилера.</p><div class="bet-row"><input id="bet" type="number" min="1" placeholder="Ставка"><button id="start">Почати</button></div>`;
+      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Введи ставку і зіграй проти дилера.</p><div class="bet-row"><input id="bet" type="number" min="1" value="${presetBet}" placeholder="Ставка"><button id="start">Почати</button></div>`;
       document.getElementById('start').onclick = async () => {
         const bet = Number(document.getElementById('bet').value);
-        try { renderBlackjack(await api('/api/blackjack/start', { method: 'POST', body: JSON.stringify({ bet }) })); } catch (error) { showStatus(`❌ ${error.message}`); }
+        try { lastBet = bet; renderBlackjack(await api('/api/blackjack/start', { method: 'POST', body: JSON.stringify({ bet }) })); } catch (error) { showStatus(`❌ ${error.message}`); }
       };
     };
     const renderBlackjack = (game) => {
       panel.classList.add('show');
       const finished = game.status === 'finished';
-      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Дилер</p><div class="cards">${drawCards(game.dealer)}</div><p>Ти · ${game.total}</p><div class="cards">${drawCards(game.player)}</div>${finished ? `<p><b>${game.result}</b> · ${game.change > 0 ? '+' : ''}${game.change} оч.</p><p>Баланс: <b>${game.balance}</b></p><div class="game-actions"><button id="again">🔁 Ще раз</button></div>` : `<div class="game-actions"><button id="hit">➕ Hit</button><button id="stay">✋ Stay</button></div>`}`;
-      if (finished) document.getElementById('again').onclick = showBlackjack;
+      panel.innerHTML = `<h2>🃏 Blackjack</h2><p>Дилер</p><div class="cards">${drawCards(game.dealer)}</div><p>Ти · ${game.total}</p><div class="cards">${drawCards(game.player)}</div>${finished ? `<p><b>${game.result}</b> · ${game.change > 0 ? '+' : ''}${game.change} оч.</p><p>Баланс: <b>${game.balance}</b></p><div class="game-actions"><button id="again">🔁 Повторити ставку ${lastBet}</button><button id="different">✏️ Інша ставка</button></div>` : `<div class="game-actions"><button id="hit">➕ Hit</button><button id="stay">✋ Stay</button></div>`}`;
+      if (finished) {
+        document.getElementById('again').onclick = async () => { try { renderBlackjack(await api('/api/blackjack/start', { method: 'POST', body: JSON.stringify({ bet: lastBet }) })); } catch (error) { showStatus(`❌ ${error.message}`); } };
+        document.getElementById('different').onclick = () => showBlackjack();
+      }
       else ['hit', 'stay'].forEach((action) => { document.getElementById(action).onclick = async () => { try { renderBlackjack(await api('/api/blackjack/action', { method: 'POST', body: JSON.stringify({ action }) })); await refreshProfile(); } catch (error) { showStatus(`❌ ${error.message}`); } }; });
     };
     document.querySelectorAll('[data-game]').forEach((button) => button.addEventListener('click', () => {
