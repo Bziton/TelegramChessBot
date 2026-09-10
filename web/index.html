@@ -72,6 +72,7 @@
     .card { display: grid; place-items: center; width: 44px; height: 58px; border: 1px solid #d5ae4a; background: #f8f2df; color: #16130d; font: 25px Georgia, serif; }
     .game-actions { display: flex; gap: 8px; margin-top: 15px; }
     .game-actions button, .bet-row button { padding: 11px 15px; background: linear-gradient(110deg, var(--orange-light), var(--gold) 45%, var(--orange-dark)); color: #211b0d; font-weight: 700; border-color: var(--orange-light); }
+    .dice-roll { color: var(--orange-light); animation: dice-pulse .65s ease-in-out infinite alternate; }
     .bet-row { display: flex; gap: 8px; margin-top: 12px; }
     .bet-row input { width: 110px; padding: 10px; border: 1px solid #72591f; background: #0d1119; color: white; font: inherit; }
     .bottom { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 25px; }
@@ -80,6 +81,7 @@
     @keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slide-down { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes rise-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes dice-pulse { from { transform: translateX(-3px); opacity: .55; } to { transform: translateX(3px); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
     @media (max-width: 390px) { .app { padding-inline: 12px; } .hero { padding: 19px; } .hero h2 { font-size: 23px; } .balance { padding: 7px 9px; } }
   </style>
@@ -158,9 +160,26 @@
       }
       else ['hit', 'stay'].forEach((action) => { document.getElementById(action).onclick = async () => { try { renderBlackjack(await api('/api/blackjack/action', { method: 'POST', body: JSON.stringify({ action }) })); await refreshProfile(); } catch (error) { showStatus(`❌ ${error.message}`); } }; });
     };
+    const showDice = (presetBet = '') => {
+      panel.classList.add('show');
+      panel.innerHTML = `<h2>🎲 Кості</h2><p>Вища сума забирає ставку.</p><div class="bet-row"><input id="dice-bet" type="number" min="1" value="${presetBet}" placeholder="Ставка"><button id="dice-start">Кинути</button></div>`;
+      document.getElementById('dice-start').onclick = async () => {
+        const bet = Number(document.getElementById('dice-bet').value);
+        try {
+          panel.innerHTML = '<h2>🎲 Кості</h2><p class="dice-roll">Кубики летять...</p>';
+          await new Promise((resolve) => setTimeout(resolve, 650));
+          const game = await api('/api/dice/play', { method: 'POST', body: JSON.stringify({ bet }) });
+          panel.innerHTML = `<h2>🎲 Кості</h2><p>Твої: <b>${game.player.join(' + ')} = ${game.player_total}</b></p><p>Бота: <b>${game.dealer.join(' + ')} = ${game.dealer_total}</b></p><p><b>${game.result}</b> · ${game.change > 0 ? '+' : ''}${game.change} оч.</p><p>Баланс: <b>${game.balance}</b></p><div class="game-actions"><button id="dice-again">🔁 Повторити ставку ${bet}</button><button id="dice-other">✏️ Інша ставка</button></div>`;
+          document.getElementById('dice-again').onclick = () => showDice(bet);
+          document.getElementById('dice-other').onclick = showDice;
+          await refreshProfile();
+        } catch (error) { showStatus(`❌ ${error.message}`); showDice(); }
+      };
+    };
     document.querySelectorAll('[data-game]').forEach((button) => button.addEventListener('click', () => {
       if (button.dataset.game === 'blackjack') return showBlackjack();
-      const labels = { dice: '🎲 Кості підключимо наступними.', cases: '📦 Кейси підключимо наступними.', duel: '👥 Дуелі підключимо наступними.' };
+      if (button.dataset.game === 'dice') return showDice();
+      const labels = { cases: '📦 Кейси підключимо наступними.', duel: '👥 Дуелі підключимо наступними.' };
       showStatus(labels[button.dataset.game]);
     }));
     document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => showStatus(`Розділ «${button.textContent.trim()}» готується.`)));
