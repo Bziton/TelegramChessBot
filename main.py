@@ -544,8 +544,13 @@ def solo_case_result_keyboard(case_type):
 def case_roll_frame(title, center_drop):
     drop_names = ["🪙", "💵", "💎", "👑", "🌟"]
     preview = [random.choice(drop_names) for _ in range(4)]
-    items = preview[:2] + [center_drop] + preview[2:]
-    return f"📦 <b>{title}</b>\n\n  {'  '.join(items)}\n        ⬆️"
+    left_items = "  ".join(preview[:2])
+    right_items = "  ".join(preview[2:])
+    return (
+        f"📦 <b>{title}</b>\n\n"
+        f"{left_items}  | <b>{center_drop}</b> |  {right_items}\n"
+        f"                 🎯"
+    )
 
 
 @dp.message(Command("casebattle"))
