@@ -1611,7 +1611,9 @@ async def mini_wheel_play_api(request):
 
 
 def crash_point():
-    return round(max(1.01, min(25.0, 1 + random.expovariate(0.42))), 2)
+    if random.random() < 0.28:
+        return 1.01
+    return round(max(1.01, min(12.0, 1 + random.expovariate(0.72))), 2)
 
 
 async def mini_crash_start_api(request):
